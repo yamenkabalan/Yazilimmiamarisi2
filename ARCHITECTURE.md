@@ -28,7 +28,15 @@ flowchart LR
     A["FileLineSource<br/>«Source&lt;String&gt;»"] -- "Emitter&lt;String&gt;" --> B["ConsoleSink<br/>«Sink&lt;String&gt;»"]
 ```
 
-In v1 the stage list is empty, so the source is connected directly to the sink.
+The pipeline contains one stage, `LimitStage(5)`, between the two boxes, so only
+the first 5 lines reach the sink:
+
+```
+FileLineSource ──Emitter──▶ LimitStage(5) ──Emitter──▶ ConsoleSink
+```
+
+The limit is a stage, not an `if` in `Main` — `Main` only assembles the pipeline.
+`LimitStage` also uses the `open()` lifecycle hook to reset its counter.
 
 ## Components and connectors
 

@@ -10,7 +10,7 @@ Software Architecture term project.
 
 ## What it does
 
-`logflow` reads a text (log) file and prints every line to the console —
+`logflow` reads a text (log) file and prints its **first 5 lines** to the console —
 **through a pipeline** (Source → Stages → Sink), not through a `main` method that does everything.
 
 ## Requirements
@@ -42,7 +42,8 @@ logflow data\access-small.log          # Windows cmd
 java -jar target/logflow.jar data/access-small.log
 ```
 
-Expected result: all 200 lines of `data/access-small.log` are printed to the console.
+Expected result: the first 5 lines of `data/access-small.log` are printed to the console.
+The limit is applied by `LimitStage` inside the pipeline, not by `Main`.
 
 ## Project structure
 
@@ -59,6 +60,8 @@ src/main/java/logflow/
 ├── io/                        implementations
 │   ├── FileLineSource.java    emits one String per line of a file
 │   └── ConsoleSink.java       prints each record
+├── stage/
+│   └── LimitStage.java        lets only the first N records through
 └── pipeline/
     ├── Pipeline.java          ordered list of stages, run() pushes source → sink
     └── PipelineException.java
