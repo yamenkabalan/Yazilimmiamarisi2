@@ -1,0 +1,3 @@
+#!/bin/sh
+# Usage: ./logflow data/access-small.log
+exec java -jar "$(dirname "$0")/target/logflow.jar" "$@"
