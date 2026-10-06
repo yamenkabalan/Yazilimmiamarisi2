@@ -47,15 +47,6 @@ public final class LogRecord implements Record {
         return new Builder();
     }
 
-    /** A builder pre-filled with this record's values — the way to "modify" an immutable record. */
-    public Builder toBuilder() {
-        Builder b = new Builder()
-                .timestamp(timestamp).clientIp(clientIp).method(method).path(path)
-                .status(status).bytes(bytes).userAgent(userAgent).raw(raw);
-        b.attributes.putAll(attributes);
-        return b;
-    }
-
     public Instant timestamp() { return timestamp; }
     public String clientIp() { return clientIp; }
     public String method() { return method; }
@@ -72,23 +63,6 @@ public final class LogRecord implements Record {
 
     @Override
     public String raw() { return raw; }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof LogRecord)) return false;
-        LogRecord r = (LogRecord) o;
-        return status == r.status && bytes == r.bytes
-                && timestamp.equals(r.timestamp) && clientIp.equals(r.clientIp)
-                && method.equals(r.method) && path.equals(r.path)
-                && userAgent.equals(r.userAgent) && attributes.equals(r.attributes)
-                && raw.equals(r.raw);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(timestamp, clientIp, method, path, status, bytes, userAgent, attributes, raw);
-    }
 
     @Override
     public String toString() {

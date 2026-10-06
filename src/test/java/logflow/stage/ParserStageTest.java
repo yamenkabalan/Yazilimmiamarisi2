@@ -37,7 +37,6 @@ class ParserStageTest {
         parser.process(line, out);
         assertTrue(out.isEmpty(), "nothing should be emitted for: " + line);
         assertEquals(1, parser.malformedCount());
-        assertEquals(0, parser.parsedCount());
     }
 
     // ---- the 8 required cases ----------------------------------------------------------
@@ -58,7 +57,6 @@ class ParserStageTest {
         assertEquals("HTTP/1.1", r.attribute("protocol"));
         assertEquals("https://www.google.com/", r.attribute("referer"));
         assertEquals(VALID, r.raw());
-        assertEquals(1, parser.parsedCount());
         assertEquals(0, parser.malformedCount());
     }
 
@@ -162,7 +160,7 @@ class ParserStageTest {
     }
 
     @Test
-    @DisplayName("counters accumulate over many lines and reset on open()")
+    @DisplayName("malformed counter accumulates over many lines and resets on open()")
     void countersAccumulateAndReset() {
         parser.process(VALID, out);
         parser.process("junk", out);
@@ -170,11 +168,9 @@ class ParserStageTest {
         parser.process("", out);
 
         assertEquals(2, out.size());
-        assertEquals(2, parser.parsedCount());
         assertEquals(2, parser.malformedCount());
 
         parser.open();
-        assertEquals(0, parser.parsedCount());
         assertEquals(0, parser.malformedCount());
     }
 }

@@ -1,44 +1,39 @@
 package logflow.io;
 
 import java.io.PrintStream;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.Objects;
-import java.util.function.Function;
 
 import logflow.core.Sink;
 import logflow.model.LogRecord;
 
 /**
- * Prints every record it receives on its own line.
- * <p>
- * How a record becomes text is decided by a formatter function, so the sink itself does not
- * depend on any particular record type.
+ * Prints every {@link LogRecord} as one readable line, e.g.
+ * <pre>2026-09-28 05:01:03Z  192.168.1.183    DELETE /index.html  200  36770 B  ua="Mozilla/5.0 ..."</pre>
+ * Timestamps are shown in UTC.
  */
-public final class ConsoleSink<I> implements Sink<I> {
+public final class ConsoleSink implements Sink<LogRecord> {
+
+    private static final DateTimeFormatter TIME =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss'Z'").withZone(ZoneOffset.UTC);
 
     private final PrintStream out;
-    private final Function<? super I, String> formatter;
 
-    /** Prints {@code String.valueOf(item)} to standard output. */
     public ConsoleSink() {
         this(System.out);
     }
 
     public ConsoleSink(PrintStream out) {
-        this(out, String::valueOf);
-    }
-
-    public ConsoleSink(PrintStream out, Function<? super I, String> formatter) {
         this.out = Objects.requireNonNull(out, "out");
-        this.formatter = Objects.requireNonNull(formatter, "formatter");
-    }
-
-    /** A sink that prints each {@link LogRecord} as one readable line. */
-    public static ConsoleSink<LogRecord> forLogRecords(PrintStream out) {
-        return new ConsoleSink<>(out, LogRecordFormatter::format);
     }
 
     @Override
-    public void consume(I item) {
-        out.println(formatter.apply(item));
+    public void consume(LogRecord r) {
+        String query = r.attribute("query");
+        String target = query == null ? r.path() : r.path() + "?" + query;
+        out.println(String.format("%s  %-15s  %-6s %s  %d  %d B  ua=\"%s\"",
+                TIME.format(r.timestamp()), r.clientIp(), r.method(), target,
+                r.status(), r.bytes(), r.userAgent()));
     }
 }

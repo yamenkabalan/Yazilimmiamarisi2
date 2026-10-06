@@ -28,16 +28,6 @@ flowchart LR
     A["FileLineSource<br/>«Source&lt;String&gt;»"] -- "Emitter&lt;String&gt;" --> B["ConsoleSink<br/>«Sink&lt;String&gt;»"]
 ```
 
-The pipeline contains one stage, `LimitStage(5)`, between the two boxes, so only
-the first 5 lines reach the sink:
-
-```
-FileLineSource ──Emitter──▶ LimitStage(5) ──Emitter──▶ ConsoleSink
-```
-
-The limit is a stage, not an `if` in `Main` — `Main` only assembles the pipeline.
-`LimitStage` also uses the `open()` lifecycle hook to reset its counter.
-
 ## Components and connectors
 
 | Element | Kind | Responsibility |
@@ -48,7 +38,7 @@ The limit is a stage, not an `if` in `Main` — `Main` only assembles the pipeli
 | `Emitter<T>` | **connector** interface | Pushes an item to the next element |
 | `Record` | data concept | The unit that flows through the pipe |
 | `LogRecord` | domain model | Immutable parsed log entry (v2), implements `Record` |
-| `ParserStage` | component | `String` → `LogRecord`; skips and counts malformed lines |
+| `ParserStage` | component (the one stage) | `String` → `LogRecord`; skips and counts malformed lines |
 | `Pipeline` | configuration / runner | Holds the ordered stages and wires emitters together |
 | `Main` | entry point | Reads args, assembles the pipeline, calls `run()` |
 
@@ -78,27 +68,25 @@ Stages are `open()`ed before running and `close()`d afterwards (in reverse order
 
 ## v2 — From strings to a domain model
 
+The pipeline has exactly **one stage** — Source, pump, Sink:
+
 ```
-FileLineSource ──▶ ParserStage ──▶ LimitStage(5) ──▶ ConsoleSink
-   «Source<String>»   «Stage<String,LogRecord>»  «Stage<LogRecord,LogRecord>»  «Sink<LogRecord>»
+FileLineSource ──▶ ParserStage ──▶ ConsoleSink
+«Source<String>»  «Stage<String,LogRecord>»  «Sink<LogRecord>»
 ```
 
 ```mermaid
 flowchart LR
     A["FileLineSource"] -- "String" --> P["ParserStage"]
-    P -- "LogRecord" --> L["LimitStage(5)"]
-    L -- "LogRecord" --> B["ConsoleSink"]
+    P -- "LogRecord" --> B["ConsoleSink"]
 ```
 
-**Separation of concerns.** Reading (`FileLineSource`), understanding (`ParserStage`),
-selecting (`LimitStage`) and presenting (`ConsoleSink` + `LogRecordFormatter`) are four
-different classes. Each can be tested and replaced on its own.
+**Separation of concerns.** Reading (`FileLineSource`), understanding (`ParserStage`) and
+presenting (`ConsoleSink`) are three different classes. Each can be tested and replaced on its own.
 
-**Inserting a stage in the middle.** `ParserStage` was added between the source and
-`LimitStage`. `FileLineSource`, `LimitStage`, `Pipeline` and the `core` interfaces were
-**not changed** — only `Main` (assembly) and `ConsoleSink` (how a record is shown).
-`LimitStage` is generic (`LimitStage<T>`), so it works on `LogRecord` exactly as it did on `String`.
-The limit sits *after* the parser so that every line of the file is parsed and counted.
+**Inserting a stage in the middle.** `ParserStage` was added between the source and the sink.
+`FileLineSource`, `Pipeline` and the `core` interfaces were **not changed** — only `Main`
+(assembly) and `ConsoleSink` (it now prints a `LogRecord`).
 
 **`LogRecord` is immutable** — final fields, an unmodifiable copy of the attributes map,
 created through a Builder (Java 8 has no `record` type). A record can be shared by any

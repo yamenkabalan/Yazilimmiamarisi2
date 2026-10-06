@@ -11,12 +11,15 @@ Software Architecture term project.
 ## What it does
 
 `logflow` reads an Apache access log, **parses every line into a typed `LogRecord`**,
-and prints the first 5 records as readable one-line summaries. Lines that cannot be
-parsed are **skipped and counted**; the totals are printed at the end.
+and prints every record as a readable one-line summary. Lines that cannot be
+parsed are **skipped and counted**; the total is printed at the end.
+
+The pipeline has exactly **one stage**:
 
 ```
-FileLineSource ──▶ ParserStage ──▶ LimitStage(5) ──▶ ConsoleSink
-   (String)         String→LogRecord   (LogRecord)      prints LogRecord
+FileLineSource ──▶ ParserStage ──▶ ConsoleSink
+   Source           Stage (pump)       Sink
+   (String)       String→LogRecord   prints LogRecord
 ```
 
 ## Requirements
@@ -51,20 +54,20 @@ Expected output:
 2026-09-28 05:01:03Z  192.168.1.183    DELETE /index.html  200  36770 B  ua="Mozilla/5.0 (Windows NT 10.0; ...)"
 2026-09-28 05:01:44Z  10.0.4.235       PUT    /static/js/app.js  200  30862 B  ua="Mozilla/5.0 (Macintosh; ...)"
 ...
-Parsed lines: 200, malformed lines skipped: 0
+Malformed lines skipped: 0
 ```
 
 To see malformed-line counting, use the demo file with 4 broken lines:
 
 ```bash
 java -jar target/logflow.jar data/access-with-errors.log
-# ... 5 records ...
-# Parsed lines: 6, malformed lines skipped: 4
+# ... 6 records ...
+# Malformed lines skipped: 4
 ```
 
 ## Tests
 
-JUnit 5. **26 tests**, all passing. `ParserStageTest` alone has 14 cases, including the
+JUnit 5. **20 tests**, all passing. `ParserStageTest` alone has 14 cases, including the
 8 required ones: valid line, missing field, bad timestamp, bad status code, empty line,
 extra whitespace, quoted user agent with spaces, line with a query string.
 
@@ -77,10 +80,11 @@ only depends on the `Emitter` interface, not on a file, a source or a sink.
 
 | Scope | Covered lines | Line coverage |
 |---|---|---|
-| `ParserStage` | 62 / 64 | **96.9 %** |
-| `LogRecord` (+ Builder) | 51 / 51 | 100 % |
-| `LimitStage`, `Pipeline`, `LogRecordFormatter` | 43 / 43 | 100 % |
-| **Whole project** | **171 / 200** | **85.5 %** |
+| `ParserStage` | 58 / 60 | **96.7 %** |
+| `LogRecord` (+ Builder) | 36 / 37 | 97.3 % |
+| `Pipeline` | 25 / 25 | 100 % |
+| `ConsoleSink` | 11 / 13 | 84.6 % |
+| **Whole project** | **136 / 162** | **84.0 %** |
 
 Not covered: `Main` and `FileLineSource` (they do I/O — the stage tests deliberately avoid files).
 
@@ -100,18 +104,15 @@ src/main/java/logflow/
 │   └── LogRecord.java         immutable domain record (+ Builder, attributes map)
 ├── io/
 │   ├── FileLineSource.java    emits one String per line of a file
-│   ├── ConsoleSink.java       prints each record using a formatter
-│   └── LogRecordFormatter.java  LogRecord → one readable line
+│   └── ConsoleSink.java       prints each LogRecord as one readable line
 ├── stage/
-│   ├── ParserStage.java       CLF / Combined line → LogRecord; skips & counts bad lines
-│   └── LimitStage.java        lets only the first N records through
+│   └── ParserStage.java       CLF / Combined line → LogRecord; skips & counts bad lines
 └── pipeline/
     ├── Pipeline.java
     └── PipelineException.java
 src/test/java/logflow/
 ├── testing/CollectingEmitter.java   reusable test double
 ├── stage/ParserStageTest.java       14 parser tests
-├── stage/LimitStageTest.java
 ├── model/LogRecordTest.java
 ├── io/ConsoleSinkTest.java
 └── pipeline/PipelineTest.java
