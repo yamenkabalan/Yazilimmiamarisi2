@@ -158,11 +158,11 @@ pipeline unless it is explicitly requested.
 to 4 fields. Each configuration runs twice (JIT warm-up) and the second run is reported. Counters
 show how many times each stage did work; `hash` is an order-sensitive hash of the whole output.
 
-| Order | Output | status tests | prefix tests | projections | Time |
+| Order | Output | status tests | prefix tests | projections | Time (3 runs, ms) |
 |---|---|---|---|---|---|
-| A: parse → status≥400 → /api → project | 40,000 | 1,000,000 | 285,000 | 40,000 | ≈ 1.75–2.0 s |
-| B: parse → /api → status≥400 → project | 40,000 | 200,000 | 1,000,000 | 40,000 | ≈ 1.9–2.0 s |
-| C: parse → project → status≥400 → /api | 40,000 | 1,000,000 | 285,000 | **1,000,000** | ≈ 2.15–2.3 s |
+| A: parse → status≥400 → /api → project | 40,000 | 1,000,000 | 285,000 | 40,000 | 1752 / 1982 / 2656 |
+| B: parse → /api → status≥400 → project | 40,000 | 200,000 | 1,000,000 | 40,000 | 1924 / 2027 / 2726 |
+| C: parse → project → status≥400 → /api | 40,000 | 1,000,000 | 285,000 | **1,000,000** | 2152 / 2300 / 2528 |
 
 All three produced **the same 40,000 records in the same order** (identical hash `796fc579`).
 The integration test `filterOrderDoesNotChangeTheResult` checks the same on the fixture.
@@ -174,15 +174,18 @@ The integration test `filterOrderDoesNotChangeTheResult` checks the same on the 
    work the *second* filter does — it only sees what the first let through (A: 1,285,000 vs
    B: 1,200,000 predicate tests). Rule: put the filter that drops the most records first.
    Here `/api` (20 % pass) is more selective than `status >= 400` (28.5 % pass).
-2. **A and B differ in time only within run-to-run noise**, because parsing 1,000,000 lines
-   dominates and both predicates are very cheap. Order matters much more when a filter is
-   expensive (a regex, a lookup).
+2. **Wall-clock time is dominated by parsing and is noisy.** Parsing 1,000,000 lines costs far
+   more than the cheap predicates and the projection, so the time differences between orders are
+   about the same size as the run-to-run noise (in the third run C was even the fastest).
+   The **work counters are the reliable measure** — they are exact and repeatable. Order
+   becomes visible in time when a filter or projection is expensive (a regex, a lookup, a
+   remote call).
 3. **Filtering before parsing is impossible** — the conditions read `status` and `path`, which
    only exist after the parser. `PipelineBuilder` enforces this at compile time.
 4. **Filter before or after projection is a real trade-off.**
    *Filter first* (A, B): projection runs only on the 40,000 survivors, and filters can use any
    field of the full `LogRecord`. *Project first* (C): projection runs on all 1,000,000 records
-   (≈ 15–20 % slower here), and the filters must be rewritten for the projected `Map` — they can
+   (25× more projection work), and the filters must be rewritten for the projected `Map` — they can
    only use fields that survived (filtering on `userAgent` after projecting it away is impossible).
    Projecting early pays off when later stages are expensive, remote or untrusted: they handle
    smaller records and never see the removed fields. LogFlow's default: **filter first, project last**.
