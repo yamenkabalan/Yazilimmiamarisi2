@@ -1,5 +1,29 @@
 # Changelog
 
+## v3 — Composition: filtering, projection and a pipeline builder
+
+### Added
+- `src/main/java/logflow/stage/PredicateFilterStage.java` — passes a record only if a
+  `Predicate<LogRecord>` holds; factories `minStatus`, `pathPrefix`, `between`.
+- `src/main/java/logflow/stage/ProjectionStage.java` — reduces each record to the chosen fields.
+- `src/main/java/logflow/io/FileSink.java` — writes to a file; `open()`/`close()` manage the writer.
+- `src/main/java/logflow/pipeline/PipelineBuilder.java` — fluent `from().via().to()` assembly.
+- `src/main/java/logflow/cli/Options.java` — `--out`, `--min-status`, `--path-prefix`,
+  `--from`, `--to`, `--fields`.
+- Tests: `PredicateFilterStageTest`, `ProjectionStageTest`, `FileSinkTest`, `OptionsTest`,
+  `PipelineBuilderIntegrationTest` (+ fixture `src/test/resources/fixture.log`), `Records` helper.
+- `src/test/java/logflow/experiment/FilterOrderExperiment.java` — the ordering experiment.
+
+### Changed (existing files)
+- `src/main/java/logflow/core/Sink.java` — added `open()` / `close()` lifecycle hooks (default no-ops).
+- `src/main/java/logflow/pipeline/Pipeline.java` — opens the sink before the run and closes it after (in `finally`).
+- `src/main/java/logflow/Main.java` — parses options and assembles the pipeline with `PipelineBuilder`.
+- `pom.xml` — version 3.0.0.
+- `README.md`, `ARCHITECTURE.md` (v3 section + ordering experiment), `logflow`, `logflow.cmd`.
+
+### Not changed
+`ParserStage`, `LogRecord`, `FileLineSource`, `ConsoleSink`, `Stage`, `Emitter`, `Source`.
+
 ## v2 — Typed records and the first real filter
 
 The pipeline now carries a domain model (`LogRecord`) instead of raw strings.

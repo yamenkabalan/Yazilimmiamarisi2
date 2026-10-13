@@ -1,4 +1,4 @@
-# LogFlow — Architecture (v2)
+# LogFlow — Architecture (v3)
 
 **Student:** Mohamad Yamen Kabalan — 2404040356
 
@@ -107,6 +107,85 @@ the architecture is built layer by layer.
 create the stage, call `process("…a log line…", collector)` and inspect the
 `CollectingEmitter` test double. No file, source, sink or pipeline is needed, which makes
 the tests fast, deterministic, and focused on one stage.
+
+## v3 — Composition: filtering, projection and a pipeline builder
+
+```
+FileLineSource ─▶ ParserStage ─▶ PredicateFilterStage(s) ─▶ ProjectionStage ─▶ FileSink
+ «Source<String>»  «Stage<String,LogRecord>»  «Stage<LogRecord,LogRecord>»  «Stage<LogRecord,Map>»  «Sink<Map>»
+```
+
+```mermaid
+flowchart LR
+    A["FileLineSource"] -- "String" --> P["ParserStage"]
+    P -- "LogRecord" --> F1["PredicateFilterStage<br/>status &gt;= 400"]
+    F1 -- "LogRecord" --> F2["PredicateFilterStage<br/>path starts with /api"]
+    F2 -- "LogRecord" --> J["ProjectionStage<br/>timestamp, clientIp, status, path"]
+    J -- "Map&lt;String,String&gt;" --> S["FileSink"]
+```
+
+**One responsibility per stage.** Each new stage does exactly one thing and is small:
+`PredicateFilterStage` decides *whether* a record goes on, `ProjectionStage` decides *which
+fields* go on, `FileSink` decides *where* they go. Any number of them can be combined in any
+(type-correct) order.
+
+**A filter that drops and a stage that transforms are the same architectural element.**
+Both implement `Stage<I,O>` and push results through an `Emitter`. A filter emits 0 or 1
+outputs per input; a projection emits exactly 1 of a different type. The pipeline does not
+know or care which is which — that is why the `Emitter` (not a return value) was chosen in v1.
+
+**`PipelineBuilder` — the assembly mechanism.** `from(source).via(stage)….to(sink)` builds a
+`Pipeline`. Its type parameter tracks the type at the current end of the chain, so a wrong
+order does not compile: a `LogRecord` filter cannot be placed before the parser
+(`String` is not a `LogRecord`), nor after the projection (`Map` is not a `LogRecord`).
+`Main` drives the builder from command-line options; in week 4 this becomes configuration —
+`Main` stays an assembler and the stages do not change.
+
+**Lifecycle hooks matter now.** `Sink` got `open()`/`close()` (default no-ops, like `Stage`),
+and `Pipeline.run()` calls `sink.close()` in a `finally` block. `FileSink` uses a
+`BufferedWriter`: lines stay in memory until the buffer is flushed. A sink that never closes
+its writer silently loses the end of the output. `FileSinkTest.withoutCloseTheBufferedOutputIsLost`
+shows it: after writing a line without `close()`, the file is still **0 bytes**.
+
+**Data minimisation.** `ProjectionStage` keeps only the fields that are asked for. The output
+is smaller, and personal data that is not needed (client IP, user agent) does not leave the
+pipeline unless it is explicitly requested.
+
+### Ordering experiment (v3)
+
+`src/test/java/logflow/experiment/FilterOrderExperiment.java` — the 200-line sample repeated
+5,000 times = **1,000,000 lines**, filters `status >= 400` and `path starts with /api`, projection
+to 4 fields. Each configuration runs twice (JIT warm-up) and the second run is reported. Counters
+show how many times each stage did work; `hash` is an order-sensitive hash of the whole output.
+
+| Order | Output | status tests | prefix tests | projections | Time |
+|---|---|---|---|---|---|
+| A: parse → status≥400 → /api → project | 40,000 | 1,000,000 | 285,000 | 40,000 | ≈ 1.75–2.0 s |
+| B: parse → /api → status≥400 → project | 40,000 | 200,000 | 1,000,000 | 40,000 | ≈ 1.9–2.0 s |
+| C: parse → project → status≥400 → /api | 40,000 | 1,000,000 | 285,000 | **1,000,000** | ≈ 2.15–2.3 s |
+
+All three produced **the same 40,000 records in the same order** (identical hash `796fc579`).
+The integration test `filterOrderDoesNotChangeTheResult` checks the same on the fixture.
+
+**Findings**
+
+1. **The filter order does not change the result, only the cost.** The two filters are
+   independent conditions joined by AND, so the output is the same. The order decides how much
+   work the *second* filter does — it only sees what the first let through (A: 1,285,000 vs
+   B: 1,200,000 predicate tests). Rule: put the filter that drops the most records first.
+   Here `/api` (20 % pass) is more selective than `status >= 400` (28.5 % pass).
+2. **A and B differ in time only within run-to-run noise**, because parsing 1,000,000 lines
+   dominates and both predicates are very cheap. Order matters much more when a filter is
+   expensive (a regex, a lookup).
+3. **Filtering before parsing is impossible** — the conditions read `status` and `path`, which
+   only exist after the parser. `PipelineBuilder` enforces this at compile time.
+4. **Filter before or after projection is a real trade-off.**
+   *Filter first* (A, B): projection runs only on the 40,000 survivors, and filters can use any
+   field of the full `LogRecord`. *Project first* (C): projection runs on all 1,000,000 records
+   (≈ 15–20 % slower here), and the filters must be rewritten for the projected `Map` — they can
+   only use fields that survived (filtering on `userAgent` after projecting it away is impossible).
+   Projecting early pays off when later stages are expensive, remote or untrusted: they handle
+   smaller records and never see the removed fields. LogFlow's default: **filter first, project last**.
 
 ## Next increments
 

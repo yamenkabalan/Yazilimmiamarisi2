@@ -1,4 +1,4 @@
-# LogFlow — Increment 2: Typed Records and the First Real Filter
+# LogFlow — Increment 3: Composition — Filtering, Projection and a Pipeline Builder
 
 Software Architecture term project.
 
@@ -6,118 +6,145 @@ Software Architecture term project.
 |---|---|
 | **Student** | Mohamad Yamen Kabalan |
 | **Student No** | 2404040356 |
-| **Version** | `v2` |
+| **Version** | `v3` |
 
 ## What it does
 
-`logflow` reads an Apache access log, **parses every line into a typed `LogRecord`**,
-and prints every record as a readable one-line summary. Lines that cannot be
-parsed are **skipped and counted**; the total is printed at the end.
-
-The pipeline has exactly **one stage**:
+`logflow` is a **configurable command-line log filter**. It reads an Apache access log,
+parses every line into a `LogRecord`, keeps only the records that match the filters given on
+the command line, reduces each record to the chosen fields, and writes the result to a file.
 
 ```
-FileLineSource ──▶ ParserStage ──▶ ConsoleSink
-   Source           Stage (pump)       Sink
-   (String)       String→LogRecord   prints LogRecord
+FileLineSource ─▶ ParserStage ─▶ PredicateFilterStage(s) ─▶ ProjectionStage ─▶ FileSink
+   reads             parses          keeps / drops             picks fields       writes
+```
+
+The pipeline is assembled with the fluent `PipelineBuilder`:
+
+```java
+Pipeline<String, Map<String, String>> p = PipelineBuilder.from(new FileLineSource(in))
+        .via(new ParserStage())
+        .via(new PredicateFilterStage(r -> r.status() >= 400))
+        .via(new ProjectionStage("timestamp", "clientIp", "status", "path"))
+        .to(new FileSink<>(out));
+p.run();
 ```
 
 ## Requirements
 
-- **JDK** 8 or newer (a JRE is enough to *run* the jar, a JDK is needed to *build*)
+- **JDK** 8 or newer to build (a JRE is enough to run the jar)
 - Maven is **not** required — use the included wrapper `mvnw` / `mvnw.cmd`
-  (it downloads Maven 3.9.9 on first use)
 
 ## Build and test
 
 ```bash
+mvnw.cmd package        # Windows
 ./mvnw package          # Linux / macOS / Git Bash
-mvnw.cmd package        # Windows cmd / PowerShell
 ```
 
-This compiles, runs all unit tests, writes the coverage report to
-`target/site/jacoco/index.html`, and produces `target/logflow.jar`.
-
-Run only the tests: `./mvnw test`
+Compiles, runs all tests, writes the coverage report to `target/site/jacoco/index.html`
+and produces `target/logflow.jar`.
 
 ## Run
 
+```
+logflow <log-file> [--out FILE] [--min-status N] [--path-prefix P]
+                   [--from ISO-TIME] [--to ISO-TIME] [--fields a,b,c]
+```
+
+| Option | Meaning | Default |
+|---|---|---|
+| `--out FILE` | output file | `out/result.log` |
+| `--min-status N` | keep records with `status >= N` | no filter |
+| `--path-prefix P` | keep records whose path starts with `P` | no filter |
+| `--from T` / `--to T` | keep records with `from <= timestamp < to` (e.g. `2026-09-28T05:00:00Z`) | no filter |
+| `--fields a,b,c` | fields to keep: `timestamp, clientIp, method, path, status, bytes, userAgent` or any attribute (`protocol`, `query`, `referer`) | `timestamp,clientIp,method,path,status,bytes` |
+
+Example — API errors only, four fields:
+
 ```bash
-./logflow data/access-small.log          # Linux / macOS / Git Bash
-logflow data\access-small.log            # Windows cmd
-java -jar target/logflow.jar data/access-small.log
+logflow data\access-small.log --min-status 400 --path-prefix /api --fields timestamp,clientIp,status,path
 ```
 
-Expected output:
-
 ```
-2026-09-28 05:01:03Z  192.168.1.183    DELETE /index.html  200  36770 B  ua="Mozilla/5.0 (Windows NT 10.0; ...)"
-2026-09-28 05:01:44Z  10.0.4.235       PUT    /static/js/app.js  200  30862 B  ua="Mozilla/5.0 (Macintosh; ...)"
-...
+Wrote 8 records to out\result.log
 Malformed lines skipped: 0
 ```
 
-To see malformed-line counting, use the demo file with 4 broken lines:
+`out/result.log`:
+
+```
+{timestamp=2026-09-28T05:21:42Z, clientIp=85.105.37.186, status=403, path=/api/products}
+{timestamp=2026-09-28T05:25:39Z, clientIp=85.105.60.124, status=403, path=/api/orders/42}
+...
+```
+
+## Ordering experiment
 
 ```bash
-java -jar target/logflow.jar data/access-with-errors.log
-# ... 6 records ...
-# Malformed lines skipped: 4
+mvnw.cmd test-compile
+java -cp "target/classes;target/test-classes" logflow.experiment.FilterOrderExperiment
 ```
+
+Runs 1,000,000 lines through the pipeline with the stages in different orders.
+Results and discussion: [ARCHITECTURE.md → Ordering experiment](ARCHITECTURE.md#ordering-experiment-v3).
 
 ## Tests
 
-JUnit 5. **20 tests**, all passing. `ParserStageTest` alone has 14 cases, including the
-8 required ones: valid line, missing field, bad timestamp, bad status code, empty line,
-extra whitespace, quoted user agent with spaces, line with a query string.
+JUnit 5, **40 tests**, all passing.
 
-Stage tests **never touch the file system**: the test creates the stage, gives it a
-`String`, and captures what it emits with the `CollectingEmitter` test double
-(`src/test/java/logflow/testing/CollectingEmitter.java`). This works because a stage
-only depends on the `Emitter` interface, not on a file, a source or a sink.
+| Test class | What it checks |
+|---|---|
+| `ParserStageTest` (14) | the 8 required parser cases + 6 more |
+| `PredicateFilterStageTest` (5) | `status >= 400`, path prefix, time range, any lambda |
+| `ProjectionStageTest` (5) | field subset and order, attributes, immutability |
+| `FileSinkTest` (5) | writing, **output lost without `close()`**, directories, misuse |
+| `PipelineBuilderIntegrationTest` (2) | fixture file → parse → filter → project → file, and the same output in both filter orders |
+| `OptionsTest` (3) | command-line parsing and error messages |
+| `PipelineTest`, `LogRecordTest`, `ConsoleSinkTest` (6) | earlier increments |
 
-## Line coverage (JaCoCo, `./mvnw test`)
+Stage tests do not touch the file system — they use the `CollectingEmitter` test double.
+Only `FileSinkTest` and the integration test use files (a JUnit temp directory), because
+writing files is exactly what they test.
+
+## Line coverage (JaCoCo)
 
 | Scope | Covered lines | Line coverage |
 |---|---|---|
-| `ParserStage` | 58 / 60 | **96.7 %** |
-| `LogRecord` (+ Builder) | 36 / 37 | 97.3 % |
-| `Pipeline` | 25 / 25 | 100 % |
-| `ConsoleSink` | 11 / 13 | 84.6 % |
-| **Whole project** | **136 / 162** | **84.0 %** |
+| `ParserStage` | 58 / 60 | 96.7 % |
+| `PredicateFilterStage` | 9 / 9 | 100 % |
+| `ProjectionStage` | 20 / 20 | 100 % |
+| `PipelineBuilder`, `Pipeline` | 40 / 40 | 100 % |
+| `Options` | 31 / 31 | 100 % |
+| `FileSink` | 19 / 25 | 76.0 % (I/O error branches) |
+| **Whole project** | **240 / 278** | **86.3 %** |
 
-Not covered: `Main` and `FileLineSource` (they do I/O — the stage tests deliberately avoid files).
+Not covered: `Main` (only assembles and runs).
 
 ## Project structure
 
 ```
 src/main/java/logflow/
-├── Main.java                  reads args, assembles the pipeline, calls run()
-├── core/                      the interfaces (the vocabulary)
-│   ├── Record.java
-│   ├── Stage.java
-│   ├── Emitter.java
-│   ├── Source.java
-│   ├── Sink.java
-│   └── StageException.java
+├── Main.java                  reads options, assembles the pipeline, calls run()
+├── cli/
+│   └── Options.java           command-line arguments → values
+├── core/                      the interfaces (Record, Stage, Emitter, Source, Sink, StageException)
 ├── model/
 │   └── LogRecord.java         immutable domain record (+ Builder, attributes map)
 ├── io/
 │   ├── FileLineSource.java    emits one String per line of a file
-│   └── ConsoleSink.java       prints each LogRecord as one readable line
+│   ├── FileSink.java          writes one line per item; open()/close() manage the writer
+│   └── ConsoleSink.java       prints a LogRecord as one readable line (v2)
 ├── stage/
-│   └── ParserStage.java       CLF / Combined line → LogRecord; skips & counts bad lines
+│   ├── ParserStage.java       CLF / Combined line → LogRecord; skips & counts bad lines
+│   ├── PredicateFilterStage.java  keeps a record only if a Predicate<LogRecord> holds
+│   └── ProjectionStage.java   LogRecord → only the chosen fields
 └── pipeline/
     ├── Pipeline.java
+    ├── PipelineBuilder.java   from(...).via(...).via(...).to(...)
     └── PipelineException.java
-src/test/java/logflow/
-├── testing/CollectingEmitter.java   reusable test double
-├── stage/ParserStageTest.java       14 parser tests
-├── model/LogRecordTest.java
-├── io/ConsoleSinkTest.java
-└── pipeline/PipelineTest.java
-data/access-small.log          200-line sample Apache access log
-data/access-with-errors.log    10 lines, 4 of them malformed (demo)
+src/test/java/logflow/...      tests, CollectingEmitter, FilterOrderExperiment
+src/test/resources/fixture.log 7-line fixture for the integration test
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the design and [CHANGELOG.md](CHANGELOG.md) for what changed.

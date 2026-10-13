@@ -38,16 +38,21 @@ public final class Pipeline<S, T> {
 
     @SuppressWarnings("unchecked")
     public void run() {
-        for (Stage<Object, Object> stage : stages) {
-            stage.open();
-        }
+        sink.open();
         try {
-            Emitter<S> head = (Emitter<S>) (Emitter<?>) chainFrom(0);
-            source.produce(head);
-        } finally {
-            for (int i = stages.size() - 1; i >= 0; i--) {
-                stages.get(i).close();
+            for (Stage<Object, Object> stage : stages) {
+                stage.open();
             }
+            try {
+                Emitter<S> head = (Emitter<S>) (Emitter<?>) chainFrom(0);
+                source.produce(head);
+            } finally {
+                for (int i = stages.size() - 1; i >= 0; i--) {
+                    stages.get(i).close();
+                }
+            }
+        } finally {
+            sink.close();   // always: a sink that is never closed silently loses buffered output
         }
     }
 
