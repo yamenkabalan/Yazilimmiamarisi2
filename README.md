@@ -23,9 +23,9 @@ A new pipeline needs a new YAML file, **not a recompile**.
 
 | Config | What it produces | Output |
 |---|---|---|
-| `configs/error-report.yaml` | every failed request (`status >= 400`): timestamp, clientIp, status, path | terminal |
-| `configs/api-traffic.yaml` | only `/api` requests: timestamp, method, path, status | terminal |
-| `configs/bandwidth-by-client.yaml` | responses with a body (`bytes > 0`): clientIp, bytes | terminal |
+| `configs/error-report.yaml` | every failed request (`status >= 400`): timestamp, clientIp, status, path | `out/errors.txt` + terminal |
+| `configs/api-traffic.yaml` | only `/api` requests: timestamp, method, path, status | `out/api-traffic.txt` + terminal |
+| `configs/bandwidth-by-client.yaml` | responses with a body (`bytes > 0`): clientIp, bytes | `out/bandwidth.txt` + terminal |
 
 ```bash
 logflow --config configs/error-report.yaml
@@ -34,9 +34,9 @@ logflow --config configs/bandwidth-by-client.yaml
 ```
 
 ```
-Pipeline 'error-report': 57 records -> console (malformed lines skipped: 0)
-Pipeline 'api-traffic': 40 records -> console (malformed lines skipped: 0)
-Pipeline 'bandwidth-by-client': 186 records -> console (malformed lines skipped: 0)
+Pipeline 'error-report': 57 records -> out/errors.txt + console (malformed lines skipped: 0)
+Pipeline 'api-traffic': 40 records -> out/api-traffic.txt + console (malformed lines skipped: 0)
+Pipeline 'bandwidth-by-client': 186 records -> out/bandwidth.txt + console (malformed lines skipped: 0)
 ```
 
 `configs/error-report.yaml`:
@@ -55,7 +55,8 @@ pipeline:
     - type: project
       params: { fields: [timestamp, clientIp, status, path] }
   sink:
-    type: console        # or: type: file + params: { path: out/errors.txt }
+    type: file
+    params: { path: out/errors.txt, echo: true }   # echo: also print in the terminal
 ```
 
 The full schema (all types, parameters, fields and operators) is in
@@ -85,14 +86,14 @@ skipped and counted for now; week 5 handles them properly.
 ## Requirements, build, tests
 
 - JDK 8 or newer to build (a JRE is enough to run the jar); Maven via the wrapper `mvnw.cmd`.
-- `mvnw.cmd clean package` — compiles, runs **54 tests**, writes the coverage report to
+- `mvnw.cmd clean package` — compiles, runs **57 tests**, writes the coverage report to
   `target/site/jacoco/index.html`, and builds `target/logflow.jar` (SnakeYAML is packed inside it).
 
 | Test class | What it checks |
 |---|---|
-| `PipelineLoaderTest` (12) | valid config, **unknown stage type, missing parameter, wrong-type parameter, empty pipeline**, wrong order, typo in a parameter, unknown field, missing input file, unknown sink, invalid YAML, and that the 3 shipped configs load |
+| `PipelineLoaderTest` (14) | valid config, **unknown stage type, missing parameter, wrong-type parameter, empty pipeline**, wrong order, typo in a parameter, unknown field, missing input file, unknown sink, invalid YAML, `echo` for the file sink, and that the 3 shipped configs load |
 | `FieldConditionTest` (3) | `field op value` conditions and rejected combinations |
-| stage, sink, pipeline tests (39) | the earlier increments |
+| stage, sink, pipeline tests (40) | the earlier increments |
 
 ## Project structure
 
@@ -109,7 +110,7 @@ src/main/java/logflow/
 │   └── ConfigException.java   a configuration-time error
 ├── core/                      Record, Stage, Emitter, Source, Sink, StageException
 ├── model/LogRecord.java       the parsed log entry
-├── io/                        FileLineSource, FileSink, ConsoleSink
+├── io/                        FileLineSource, FileSink, ConsoleSink, TeeSink (file + terminal)
 ├── stage/                     ParserStage, PredicateFilterStage, FieldCondition, ProjectionStage
 └── pipeline/                  Pipeline, PipelineBuilder, PipelineException
 ```

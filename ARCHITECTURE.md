@@ -252,7 +252,8 @@ pipeline:
       params: { fields: [<field>, ...] }
   sink:
     type: file | console
-    params: { path: <file> }         # only for type: file
+    params: { path: <file>, echo: true }   # only for type: file; echo (optional, default false)
+                                           # also prints every record in the terminal
 ```
 
 | Item | Allowed values |

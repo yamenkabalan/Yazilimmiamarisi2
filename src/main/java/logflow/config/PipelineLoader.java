@@ -22,6 +22,7 @@ import logflow.core.Stage;
 import logflow.io.ConsoleSink;
 import logflow.io.FileLineSource;
 import logflow.io.FileSink;
+import logflow.io.TeeSink;
 import logflow.pipeline.Pipeline;
 
 /**
@@ -42,7 +43,11 @@ public final class PipelineLoader {
             }
             return new FileLineSource(path);
         });
-        SINKS.put("file", p -> new FileSink<>(Paths.get(p.string("path"))));
+        SINKS.put("file", p -> {
+            Sink<Object> file = new FileSink<>(Paths.get(p.string("path")));
+            // echo: true → also print every record in the terminal
+            return p.bool("echo", false) ? new TeeSink<>(file, new ConsoleSink<>()) : file;
+        });
         SINKS.put("console", p -> new ConsoleSink<>());
     }
 
@@ -124,7 +129,8 @@ public final class PipelineLoader {
         Params sinkParams = new Params("sink (" + sinkType + ")", sinkConfig.get("params"));
         CountingSink sink = new CountingSink(sinkFactory.apply(sinkParams));
         sinkParams.checkNoUnknown();
-        String output = sinkType.equals("file") ? sinkParams.string("path") : "console";
+        String output = !sinkType.equals("file") ? "console"
+                : sinkParams.string("path") + (sinkParams.bool("echo", false) ? " + console" : "");
 
         Pipeline<String, Object> result = new Pipeline<>(source, sink);
         for (Stage<?, ?> stage : stages) {

@@ -1,4 +1,4 @@
-# API traffic extract: only /api requests, printed in the terminal.
+# API traffic extract: only /api requests, written to out/api-traffic.txt and printed in the terminal.
 pipeline:
   name: api-traffic
   source:
@@ -11,4 +11,5 @@ pipeline:
     - type: project
       params: { fields: [timestamp, method, path, status] }
   sink:
-    type: console
+    type: file
+    params: { path: out/api-traffic.txt, echo: true }   # echo: also print in the terminal

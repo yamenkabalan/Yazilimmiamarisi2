@@ -124,6 +124,25 @@ class PipelineLoaderTest {
     }
 
     @Test
+    void fileSinkWithEchoWritesTheFileAndReportsBothOutputs() throws Exception {
+        String out = dir.resolve("out.txt").toString().replace('\\', '/');
+        LoadedPipeline p = loader.loadYaml(config("    - type: parse\n")
+                .replace("params: { path: '" + out + "' }", "params: { path: '" + out + "', echo: true }"));
+        p.run();
+
+        assertEquals(out + " + console", p.output());
+        assertEquals(6, Files.readAllLines(dir.resolve("out.txt"), StandardCharsets.UTF_8).size());
+    }
+
+    @Test
+    void echoMustBeTrueOrFalse() throws Exception {
+        String out = dir.resolve("out.txt").toString().replace('\\', '/');
+        String msg = errorOf(config("    - type: parse\n")
+                .replace("params: { path: '" + out + "' }", "params: { path: '" + out + "', echo: yes-please }"));
+        assertEquals("sink (file): parameter 'echo' must be true or false, got: yes-please", msg);
+    }
+
+    @Test
     void unknownSinkType() throws Exception {
         String msg = errorOf(config("    - type: parse\n").replace("type: file\n    params: { path: '" + dir.resolve("out.txt").toString().replace('\\', '/') + "' }", "type: printer"));
         assertEquals("sink: unknown type 'printer'. Known types: [file, console]", msg);

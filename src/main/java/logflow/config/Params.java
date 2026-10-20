@@ -46,6 +46,18 @@ public final class Params {
         return values.containsKey(key) ? string(key) : defaultValue;
     }
 
+    /** An optional true/false parameter. */
+    public boolean bool(String key, boolean defaultValue) {
+        if (!values.containsKey(key)) {
+            return defaultValue;
+        }
+        Object v = value(key);
+        if (!(v instanceof Boolean)) {
+            throw error("parameter '" + key + "' must be true or false, got: " + v);
+        }
+        return (Boolean) v;
+    }
+
     /** A required parameter of any type (text, number, …). */
     public Object value(String key) {
         used.add(key);

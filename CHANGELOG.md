@@ -8,8 +8,10 @@
 - `src/main/java/logflow/config/PipelineLoader.java` — YAML → checked `Pipeline`; fails fast.
 - `src/main/java/logflow/config/Params.java`, `LoadedPipeline.java`, `ConfigException.java`.
 - `src/main/java/logflow/stage/FieldCondition.java` — `field op value` filter conditions.
-- `configs/error-report.yaml`, `configs/api-traffic.yaml`, `configs/bandwidth-by-client.yaml`.
-- Tests: `PipelineLoaderTest` (12), `FieldConditionTest` (3).
+- `configs/error-report.yaml`, `configs/api-traffic.yaml`, `configs/bandwidth-by-client.yaml` —
+  each writes to a file in `out/` and (with `echo: true`) also prints in the terminal.
+- `src/main/java/logflow/io/TeeSink.java` — sends every record to two sinks (file + terminal).
+- Tests: `PipelineLoaderTest` (14), `FieldConditionTest` (3), `TeeSinkTest` (1).
 
 ### Changed (existing files)
 - `src/main/java/logflow/Main.java` — now only `logflow --config <file.yaml>`.
