@@ -4,8 +4,10 @@ import java.time.Instant;
 import java.util.Map;
 
 import logflow.cli.Options;
+import logflow.core.Sink;
 import logflow.io.FileLineSource;
 import logflow.io.FileSink;
+import logflow.io.PrintSink;
 import logflow.model.LogRecord;
 import logflow.pipeline.Pipeline;
 import logflow.pipeline.PipelineBuilder;
@@ -29,9 +31,11 @@ public final class Main {
             return;
         }
 
-        //  FileLineSource ─▶ ParserStage ─▶ [filters] ─▶ ProjectionStage ─▶ FileSink
+        //  FileLineSource ─▶ ParserStage ─▶ [filters] ─▶ ProjectionStage ─▶ PrintSink (terminal) | FileSink (--out)
         ParserStage parser = new ParserStage();
-        FileSink<Map<String, String>> sink = new FileSink<>(o.out);
+        PrintSink<Map<String, String>> printSink = new PrintSink<>();
+        FileSink<Map<String, String>> fileSink = o.out != null ? new FileSink<>(o.out) : null;
+        Sink<Map<String, String>> sink = fileSink != null ? fileSink : printSink;
 
         PipelineBuilder<String, LogRecord> chain = PipelineBuilder.from(new FileLineSource(o.input)).via(parser);
         if (o.status != null) {
@@ -55,7 +59,11 @@ public final class Main {
 
         pipeline.run();
 
-        System.out.println("Wrote " + sink.writtenCount() + " records to " + o.out);
+        if (fileSink != null) {
+            System.out.println("Wrote " + fileSink.writtenCount() + " records to " + o.out);
+        } else {
+            System.out.println("Records: " + printSink.writtenCount());
+        }
         System.out.println("Malformed lines skipped: " + parser.malformedCount());
     }
 }

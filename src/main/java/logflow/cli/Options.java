@@ -23,7 +23,8 @@ public final class Options {
     public static final String DEFAULT_FIELDS = "timestamp,clientIp,method,path,status,bytes";
 
     public Path input;
-    public Path out = Paths.get("out", "result.log");
+    /** Output file; {@code null} means print to the terminal. */
+    public Path out;
     public Integer status;
     public Integer minStatus;
     public String method;

@@ -14,6 +14,8 @@
   `PipelineBuilderIntegrationTest` (+ fixture `src/test/resources/fixture.log`), `Records` helper.
 - `src/test/java/logflow/experiment/FilterOrderExperiment.java` — the ordering experiment.
 - Filters `--status N` (exact status) and `--method M` (e.g. GET): `PredicateFilterStage.status()` / `method()`.
+- `src/main/java/logflow/io/PrintSink.java` — prints records in the terminal; this is the default output,
+  `--out FILE` switches to `FileSink`.
 
 ### Changed (existing files)
 - `src/main/java/logflow/core/Sink.java` — added `open()` / `close()` lifecycle hooks (default no-ops).

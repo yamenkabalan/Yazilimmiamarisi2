@@ -40,7 +40,7 @@ class OptionsTest {
         Options o = Options.parse(new String[] {"in.log"});
         assertNull(o.minStatus);
         assertNull(o.pathPrefix);
-        assertEquals(Paths.get("out", "result.log"), o.out);
+        assertNull(o.out, "no --out means print to the terminal");
         assertArrayEquals(Options.DEFAULT_FIELDS.split(","), o.fields);
     }
 

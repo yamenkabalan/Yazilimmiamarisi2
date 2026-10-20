@@ -12,7 +12,7 @@ Software Architecture term project.
 
 `logflow` is a **configurable command-line log filter**. It reads an Apache access log,
 parses every line into a `LogRecord`, keeps only the records that match the filters given on
-the command line, reduces each record to the chosen fields, and writes the result to a file.
+the command line, reduces each record to the chosen fields, and prints the result in the terminal (or writes it to a file with `--out`).
 
 ```
 FileLineSource ─▶ ParserStage ─▶ PredicateFilterStage(s) ─▶ ProjectionStage ─▶ FileSink
@@ -54,7 +54,7 @@ logflow <log-file> [--out FILE] [--status N] [--min-status N] [--method M] [--pa
 
 | Option | Meaning | Default |
 |---|---|---|
-| `--out FILE` | output file | `out/result.log` |
+| `--out FILE` | write to this file instead of the terminal | print to the terminal |
 | `--status N` | keep records with exactly `status == N` (e.g. `400`) | no filter |
 | `--min-status N` | keep records with `status >= N` | no filter |
 | `--method M` | keep records with this HTTP method (e.g. `GET`, case-insensitive) | no filter |
@@ -69,16 +69,17 @@ logflow data\access-small.log --min-status 400 --path-prefix /api --fields times
 ```
 
 ```
-Wrote 8 records to out\result.log
-Malformed lines skipped: 0
-```
-
-`out/result.log`:
-
-```
 {timestamp=2026-09-28T05:21:42Z, clientIp=85.105.37.186, status=403, path=/api/products}
 {timestamp=2026-09-28T05:25:39Z, clientIp=85.105.60.124, status=403, path=/api/orders/42}
 ...
+Records: 8
+Malformed lines skipped: 0
+```
+
+The same, written to a file (`FileSink`) instead of the terminal (`PrintSink`):
+
+```bash
+logflow data\access-small.log --min-status 400 --path-prefix /api --out out\result.log
 ```
 
 More filter examples:
@@ -101,7 +102,7 @@ Results and discussion: [ARCHITECTURE.md → Ordering experiment](ARCHITECTURE.m
 
 ## Tests
 
-JUnit 5, **43 tests**, all passing.
+JUnit 5, **44 tests**, all passing.
 
 | Test class | What it checks |
 |---|---|
@@ -144,6 +145,7 @@ src/main/java/logflow/
 ├── io/
 │   ├── FileLineSource.java    emits one String per line of a file
 │   ├── FileSink.java          writes one line per item; open()/close() manage the writer
+│   ├── PrintSink.java         prints one line per item to the terminal
 │   └── ConsoleSink.java       prints a LogRecord as one readable line (v2)
 ├── stage/
 │   ├── ParserStage.java       CLF / Combined line → LogRecord; skips & counts bad lines
