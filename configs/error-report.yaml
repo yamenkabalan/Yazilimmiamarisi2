@@ -1,4 +1,4 @@
-# Error report: every request that failed (status >= 400), four fields, written to a file.
+# Error report: every request that failed (status >= 400), four fields, printed in the terminal.
 pipeline:
   name: error-report
   source:
@@ -12,5 +12,4 @@ pipeline:
     - type: project
       params: { fields: [timestamp, clientIp, status, path] }
   sink:
-    type: file
-    params: { path: out/errors.txt }
+    type: console
