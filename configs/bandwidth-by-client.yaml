@@ -11,5 +11,4 @@ pipeline:
     - type: project
       params: { fields: [clientIp, bytes] }
   sink:
-    type: file
-    params: { path: out/bandwidth.txt }
+    type: console

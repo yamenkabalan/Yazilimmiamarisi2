@@ -25,7 +25,7 @@ A new pipeline needs a new YAML file, **not a recompile**.
 |---|---|---|
 | `configs/error-report.yaml` | every failed request (`status >= 400`): timestamp, clientIp, status, path | terminal |
 | `configs/api-traffic.yaml` | only `/api` requests: timestamp, method, path, status | terminal |
-| `configs/bandwidth-by-client.yaml` | responses with a body (`bytes > 0`): clientIp, bytes | file `out/bandwidth.txt` |
+| `configs/bandwidth-by-client.yaml` | responses with a body (`bytes > 0`): clientIp, bytes | terminal |
 
 ```bash
 logflow --config configs/error-report.yaml
@@ -36,7 +36,7 @@ logflow --config configs/bandwidth-by-client.yaml
 ```
 Pipeline 'error-report': 57 records -> console (malformed lines skipped: 0)
 Pipeline 'api-traffic': 40 records -> console (malformed lines skipped: 0)
-Pipeline 'bandwidth-by-client': 186 records -> out/bandwidth.txt (malformed lines skipped: 0)
+Pipeline 'bandwidth-by-client': 186 records -> console (malformed lines skipped: 0)
 ```
 
 `configs/error-report.yaml`:
