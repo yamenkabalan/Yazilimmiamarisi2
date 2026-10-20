@@ -48,14 +48,16 @@ and produces `target/logflow.jar`.
 ## Run
 
 ```
-logflow <log-file> [--out FILE] [--min-status N] [--path-prefix P]
+logflow <log-file> [--out FILE] [--status N] [--min-status N] [--method M] [--path-prefix P]
                    [--from ISO-TIME] [--to ISO-TIME] [--fields a,b,c]
 ```
 
 | Option | Meaning | Default |
 |---|---|---|
 | `--out FILE` | output file | `out/result.log` |
+| `--status N` | keep records with exactly `status == N` (e.g. `400`) | no filter |
 | `--min-status N` | keep records with `status >= N` | no filter |
+| `--method M` | keep records with this HTTP method (e.g. `GET`, case-insensitive) | no filter |
 | `--path-prefix P` | keep records whose path starts with `P` | no filter |
 | `--from T` / `--to T` | keep records with `from <= timestamp < to` (e.g. `2026-09-28T05:00:00Z`) | no filter |
 | `--fields a,b,c` | fields to keep: `timestamp, clientIp, method, path, status, bytes, userAgent` or any attribute (`protocol`, `query`, `referer`) | `timestamp,clientIp,method,path,status,bytes` |
@@ -79,6 +81,14 @@ Malformed lines skipped: 0
 ...
 ```
 
+More filter examples:
+
+```bash
+logflow dataccess-small.log --status 400                  # only status 400
+logflow dataccess-small.log --method GET                  # only GET requests
+logflow dataccess-small.log --status 404 --method GET     # GET requests that returned 404
+```
+
 ## Ordering experiment
 
 ```bash
@@ -91,16 +101,16 @@ Results and discussion: [ARCHITECTURE.md → Ordering experiment](ARCHITECTURE.m
 
 ## Tests
 
-JUnit 5, **40 tests**, all passing.
+JUnit 5, **43 tests**, all passing.
 
 | Test class | What it checks |
 |---|---|
 | `ParserStageTest` (14) | the 8 required parser cases + 6 more |
-| `PredicateFilterStageTest` (5) | `status >= 400`, path prefix, time range, any lambda |
+| `PredicateFilterStageTest` (7) | exact status, `status >= 400`, method, path prefix, time range, any lambda |
 | `ProjectionStageTest` (5) | field subset and order, attributes, immutability |
 | `FileSinkTest` (5) | writing, **output lost without `close()`**, directories, misuse |
 | `PipelineBuilderIntegrationTest` (2) | fixture file → parse → filter → project → file, and the same output in both filter orders |
-| `OptionsTest` (3) | command-line parsing and error messages |
+| `OptionsTest` (4) | command-line parsing and error messages |
 | `PipelineTest`, `LogRecordTest`, `ConsoleSinkTest` (6) | earlier increments |
 
 Stage tests do not touch the file system — they use the `CollectingEmitter` test double.
@@ -112,12 +122,12 @@ writing files is exactly what they test.
 | Scope | Covered lines | Line coverage |
 |---|---|---|
 | `ParserStage` | 58 / 60 | 96.7 % |
-| `PredicateFilterStage` | 9 / 9 | 100 % |
+| `PredicateFilterStage` | 11 / 11 | 100 % |
 | `ProjectionStage` | 20 / 20 | 100 % |
 | `PipelineBuilder`, `Pipeline` | 40 / 40 | 100 % |
 | `Options` | 31 / 31 | 100 % |
 | `FileSink` | 19 / 25 | 76.0 % (I/O error branches) |
-| **Whole project** | **240 / 278** | **86.3 %** |
+| **Whole project** | **244 / 286** | **85.3 %** |
 
 Not covered: `Main` (only assembles and runs).
 

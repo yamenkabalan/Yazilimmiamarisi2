@@ -28,6 +28,14 @@ public final class PredicateFilterStage implements Stage<LogRecord, LogRecord> {
         return new PredicateFilterStage(r -> r.status() >= min);
     }
 
+    public static PredicateFilterStage status(int status) {
+        return new PredicateFilterStage(r -> r.status() == status);
+    }
+
+    public static PredicateFilterStage method(String method) {
+        return new PredicateFilterStage(r -> r.method().equalsIgnoreCase(method));
+    }
+
     public static PredicateFilterStage pathPrefix(String prefix) {
         return new PredicateFilterStage(r -> r.path().startsWith(prefix));
     }

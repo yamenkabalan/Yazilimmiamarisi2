@@ -34,6 +34,12 @@ public final class Main {
         FileSink<Map<String, String>> sink = new FileSink<>(o.out);
 
         PipelineBuilder<String, LogRecord> chain = PipelineBuilder.from(new FileLineSource(o.input)).via(parser);
+        if (o.status != null) {
+            chain = chain.via(PredicateFilterStage.status(o.status));
+        }
+        if (o.method != null) {
+            chain = chain.via(PredicateFilterStage.method(o.method));
+        }
         if (o.minStatus != null) {
             chain = chain.via(PredicateFilterStage.minStatus(o.minStatus));
         }

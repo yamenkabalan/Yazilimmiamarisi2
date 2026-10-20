@@ -13,12 +13,13 @@
 - Tests: `PredicateFilterStageTest`, `ProjectionStageTest`, `FileSinkTest`, `OptionsTest`,
   `PipelineBuilderIntegrationTest` (+ fixture `src/test/resources/fixture.log`), `Records` helper.
 - `src/test/java/logflow/experiment/FilterOrderExperiment.java` — the ordering experiment.
+- Filters `--status N` (exact status) and `--method M` (e.g. GET): `PredicateFilterStage.status()` / `method()`.
 
 ### Changed (existing files)
 - `src/main/java/logflow/core/Sink.java` — added `open()` / `close()` lifecycle hooks (default no-ops).
 - `src/main/java/logflow/pipeline/Pipeline.java` — opens the sink before the run and closes it after (in `finally`).
 - `src/main/java/logflow/Main.java` — parses options and assembles the pipeline with `PipelineBuilder`.
-- `pom.xml` — version 3.0.0.
+- `pom.xml` — version 3.0.0; JaCoCo 0.8.15 (works on JDK 8 – 25).
 - `README.md`, `ARCHITECTURE.md` (v3 section + ordering experiment), `logflow`, `logflow.cmd`.
 
 ### Not changed

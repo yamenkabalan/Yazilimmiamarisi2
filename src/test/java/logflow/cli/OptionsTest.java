@@ -29,6 +29,13 @@ class OptionsTest {
     }
 
     @Test
+    void parsesExactStatusAndMethod() {
+        Options o = Options.parse(new String[] {"in.log", "--status", "404", "--method", "GET"});
+        assertEquals(Integer.valueOf(404), o.status);
+        assertEquals("GET", o.method);
+    }
+
+    @Test
     void defaultsWhenOnlyInputIsGiven() {
         Options o = Options.parse(new String[] {"in.log"});
         assertNull(o.minStatus);

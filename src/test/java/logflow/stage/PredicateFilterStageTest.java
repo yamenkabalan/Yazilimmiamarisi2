@@ -36,6 +36,17 @@ class PredicateFilterStageTest {
     }
 
     @Test
+    void statusKeepsOnlyThatExactStatus() {
+        assertEquals(Arrays.asList("/api/orders"), paths(PredicateFilterStage.status(404)));
+    }
+
+    @Test
+    void methodKeepsMatchingMethodIgnoringCase() {
+        assertEquals(4, paths(PredicateFilterStage.method("get")).size());
+        assertEquals(0, paths(PredicateFilterStage.method("POST")).size());
+    }
+
+    @Test
     void pathPrefixKeepsMatchingPaths() {
         assertEquals(Arrays.asList("/api/users", "/api/orders"), paths(PredicateFilterStage.pathPrefix("/api")));
     }
