@@ -1,0 +1,14 @@
+# API traffic extract: only /api requests, printed in the terminal.
+pipeline:
+  name: api-traffic
+  source:
+    type: file
+    params: { path: data/access-small.log }
+  stages:
+    - type: parse
+    - type: filter
+      params: { field: path, op: startsWith, value: /api }
+    - type: project
+      params: { fields: [timestamp, method, path, status] }
+  sink:
+    type: console

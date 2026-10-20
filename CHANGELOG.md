@@ -1,5 +1,31 @@
 # Changelog
 
+## v4 — Configuration-driven composition and a stage registry
+
+### Added
+- `src/main/java/logflow/config/StageRegistry.java` — stage type name → factory, one registration table.
+- `src/main/java/logflow/config/StageFactory.java` — builds a stage from its params.
+- `src/main/java/logflow/config/PipelineLoader.java` — YAML → checked `Pipeline`; fails fast.
+- `src/main/java/logflow/config/Params.java`, `LoadedPipeline.java`, `ConfigException.java`.
+- `src/main/java/logflow/stage/FieldCondition.java` — `field op value` filter conditions.
+- `configs/error-report.yaml`, `configs/api-traffic.yaml`, `configs/bandwidth-by-client.yaml`.
+- Tests: `PipelineLoaderTest` (12), `FieldConditionTest` (3).
+
+### Changed (existing files)
+- `src/main/java/logflow/Main.java` — now only `logflow --config <file.yaml>`.
+- `src/main/java/logflow/model/LogRecord.java` — `field(name)` and `FIELDS`: read any field by name.
+- `src/main/java/logflow/stage/ProjectionStage.java` — uses `LogRecord.field()`; accepts a list.
+- `src/main/java/logflow/io/ConsoleSink.java` — the generic printing sink (was `PrintSink`).
+- `pom.xml` — version 4.0.0; SnakeYAML (YAML reader); shade plugin packs it into `logflow.jar`.
+- `README.md` (error message examples), `ARCHITECTURE.md` (v4 section + configuration schema).
+
+### Removed
+- `src/main/java/logflow/cli/Options.java` (+ test) — command-line filters replaced by config files.
+- old `ConsoleSink` that only printed `LogRecord`s (+ test).
+
+### Not changed
+`ParserStage`, `PredicateFilterStage`, `FileLineSource`, `FileSink`, `Pipeline`, `PipelineBuilder`, all `core` interfaces.
+
 ## v3 — Composition: filtering, projection and a pipeline builder
 
 ### Added

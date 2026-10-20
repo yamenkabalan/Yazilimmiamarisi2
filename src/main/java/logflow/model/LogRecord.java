@@ -1,8 +1,10 @@
 package logflow.model;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -59,6 +61,25 @@ public final class LogRecord implements Record {
     /** Returns one attribute, or {@code null} if absent. */
     public String attribute(String key) {
         return attributes.get(key);
+    }
+
+    /** Field names a config file may use (filter / project). */
+    public static final List<String> FIELDS = Arrays.asList(
+            "timestamp", "clientIp", "method", "path", "status", "bytes", "userAgent",
+            "protocol", "query", "referer");
+
+    /** Returns any field by name as text; attributes that are absent give "-". */
+    public String field(String name) {
+        switch (name) {
+            case "timestamp": return timestamp.toString();
+            case "clientIp":  return clientIp;
+            case "method":    return method;
+            case "path":      return path;
+            case "status":    return String.valueOf(status);
+            case "bytes":     return String.valueOf(bytes);
+            case "userAgent": return userAgent;
+            default:          return attributes.getOrDefault(name, "-");
+        }
     }
 
     @Override

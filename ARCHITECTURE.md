@@ -1,4 +1,4 @@
-# LogFlow — Architecture (v3)
+# LogFlow — Architecture (v4)
 
 **Student:** Mohamad Yamen Kabalan — 2404040356
 
@@ -189,6 +189,84 @@ The integration test `filterOrderDoesNotChangeTheResult` checks the same on the 
    only use fields that survived (filtering on `userAgent` after projecting it away is impossible).
    Projecting early pays off when later stages are expensive, remote or untrusted: they handle
    smaller records and never see the removed fields. LogFlow's default: **filter first, project last**.
+
+## v4 — Configuration-driven composition and a stage registry
+
+The **description** of the architecture (which pipeline to run) is now separated from its
+**implementation** (the Java classes). The description is a YAML file; the program only reads it.
+
+```
+configs/error-report.yaml ──▶ PipelineLoader ──▶ Pipeline ──▶ run()
+                                   │
+                                   ▼
+                             StageRegistry
+                 "parse"   → ParserStage
+                 "filter"  → PredicateFilterStage(FieldCondition)
+                 "project" → ProjectionStage
+```
+
+```mermaid
+flowchart LR
+    Y["config.yaml"] --> L["PipelineLoader"]
+    R["StageRegistry<br/>name → StageFactory"] --> L
+    L -- "builds &amp; checks" --> P["Pipeline"]
+    P --> O["file / console"]
+```
+
+**Registry / plugin pattern.** `StageRegistry` maps a type name to a `StageFactory`. It is
+filled from one registration table (`StageRegistry.standard()`), not from a `switch` in the
+loader. Adding a new stage type = writing the stage class + one `register(...)` line; the loader,
+the pipeline and the existing stages do not change. Each entry also declares its input and output
+type (`parse`: String → LogRecord, `filter`: LogRecord → LogRecord, `project`: LogRecord → Map),
+which lets the loader check the stage order.
+
+**Fail fast, fail loudly.** `PipelineLoader` checks everything before it returns a pipeline:
+YAML syntax, required sections, unknown source/stage/sink types, missing parameters, parameter
+types, unknown parameters (typos), unknown field names, impossible operators, the stage order,
+and that the input file exists. Any problem throws `ConfigException`; `Main` prints it and exits
+with code 2 — **no log line has been read yet**.
+
+**Configuration-time vs run-time errors.**
+
+| | Configuration-time error | Run-time data error |
+|---|---|---|
+| Example | `type: filtr`, missing `op`, `value: abc` | a broken line in the log file |
+| Where found | `PipelineLoader`, before running | `ParserStage`, while running |
+| Reaction | stop immediately with a clear message | skip and count the line, keep going (week 5) |
+| Cause | the person who wrote the config | the data |
+
+### Configuration schema (v4)
+
+```yaml
+pipeline:
+  name: <text>                       # required, shown in the summary line
+  source:
+    type: file                       # the only source type
+    params: { path: <file> }         # required; the file must exist
+  stages:                            # required, at least one stage, run in this order
+    - type: parse                    # String -> LogRecord, must come before filter/project
+      params: { format: clf }        # optional, only "clf" (Common / Combined Log Format)
+    - type: filter                   # LogRecord -> LogRecord, keeps records where "field op value"
+      params: { field: <field>, op: <op>, value: <value> }
+    - type: project                  # LogRecord -> Map, keeps only these fields
+      params: { fields: [<field>, ...] }
+  sink:
+    type: file | console
+    params: { path: <file> }         # only for type: file
+```
+
+| Item | Allowed values |
+|---|---|
+| `<field>` | `timestamp`, `clientIp`, `method`, `path`, `status`, `bytes`, `userAgent`, `protocol`, `query`, `referer` |
+| `<op>` | `==`, `!=` (text, case-insensitive), `startsWith`, `contains` (text), `>`, `>=`, `<`, `<=` (numbers, only for `status`, `bytes`) |
+| `<value>` | a number for `>`, `>=`, `<`, `<=`; any text otherwise |
+
+Several `filter` stages can follow each other (logical AND). The three shipped configs are
+`configs/error-report.yaml`, `configs/api-traffic.yaml`, `configs/bandwidth-by-client.yaml`.
+
+**Simplified in v4.** The command-line filter options of v3 (`--min-status`, `--fields`, …,
+class `Options`) were replaced by the config file, as planned. The old `ConsoleSink` that only
+printed `LogRecord`s was removed; the generic printing sink is now `ConsoleSink`.
 
 ## Next increments
 
