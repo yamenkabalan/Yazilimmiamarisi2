@@ -6,6 +6,8 @@ import logflow.config.ConfigException;
 import logflow.config.LoadedPipeline;
 import logflow.config.PipelineLoader;
 import logflow.config.StageRegistry;
+import logflow.pipeline.PipelineException;
+import logflow.pipeline.RunSummary;
 
 /**
  * Entry point: {@code logflow --config configs/error-report.yaml}.
@@ -31,10 +33,12 @@ public final class Main {
             return;
         }
 
-        pipeline.run();
-
-        System.out.println("Pipeline '" + pipeline.name() + "': " + pipeline.recordCount()
-                + " records -> " + pipeline.output()
-                + " (malformed lines skipped: " + pipeline.malformedCount() + ")");
+        try {
+            RunSummary summary = pipeline.run();
+            System.out.println(summary);
+        } catch (PipelineException e) {
+            System.err.println("Pipeline failed: " + e.getMessage());
+            System.exit(3);
+        }
     }
 }

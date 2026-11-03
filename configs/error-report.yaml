@@ -6,7 +6,15 @@ pipeline:
     params: { path: data/access-small.log }
   stages:
     - type: parse
+      onError: skip        # v5: malformed lines are skipped and counted; dead-letter not used here
       params: { format: clf }
+    - type: validate
+      onError: dead_letter  # v5: domain-invalid records go to out/dead-letter.txt
+      params:
+        required: [clientIp, status, path, timestamp]
+        ranges:
+          status: { min: 100, max: 599 }
+          bytes: { min: 0 }
     - type: filter
       params: { field: status, op: ">=", value: 400 }
     - type: project
@@ -14,3 +22,6 @@ pipeline:
   sink:
     type: file
     params: { path: out/errors.txt, echo: true }   # echo: also print in the terminal
+  deadLetter:
+    type: file
+    params: { path: out/dead-letter.txt, echo: true }

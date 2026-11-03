@@ -1,4 +1,4 @@
-# LogFlow — Architecture (v4)
+# LogFlow — Architecture (v5)
 
 **Student:** Mohamad Yamen Kabalan — 2404040356
 
@@ -269,8 +269,113 @@ Several `filter` stages can follow each other (logical AND). The three shipped c
 class `Options`) were replaced by the config file, as planned. The old `ConsoleSink` that only
 printed `LogRecord`s was removed; the generic printing sink is now `ConsoleSink`.
 
-## Next increments
+## v5 — Error handling: policies, dead-letter, validation and run summary
 
-The value of the pipeline is not visible yet — this is expected at week one.
-Later increments add stages (parsing, filtering, aggregation) **without
-changing** the source, sink, or pipeline.
+### The problem with silent failure
+
+In v4, the `ParserStage` silently skipped and counted malformed lines. This meant:
+- A broken config or corrupt input gave no signal that something went wrong.
+- There was no way to route failed records elsewhere (a dead-letter file, an alerting system).
+- Every stage that could fail had to implement its own ad-hoc skip logic.
+
+### Architectural decisions
+
+**`StageException` is now a real signal.** A stage that cannot process a record throws
+`StageException`. The pipeline intercepts it and applies the stage's configured `ErrorPolicy`.
+The stage no longer decides what to do on failure — the pipeline orchestrates it.
+
+**`ErrorPolicy` is a configuration value, not code.** Four policies are supported:
+
+| Policy | YAML key | Behaviour |
+|---|---|---|
+| `FAIL_FAST` | `onError: fail_fast` | Abort immediately; `PipelineException` propagates up (default) |
+| `SKIP` | `onError: skip` | Drop the record silently; increment dropped counter |
+| `DEAD_LETTER` | `onError: dead_letter` | Route the failed record with diagnostic context to the secondary sink |
+| `RETRY(n)` | `onError: retry(3)` | Retry up to *n* times before falling back to FAIL_FAST |
+
+**`ValidationStage` is a new declarative domain guard.** It sits after the parser and enforces
+business invariants without touching `ParserStage` or any downstream stage:
+required fields, numeric ranges (status, bytes), timestamp window, IP format, and max line length.
+Violations throw `StageException`, which the pipeline routes per policy (typically DEAD_LETTER).
+
+**`FailedRecord` is the dead-letter domain type.** It carries the raw input, the stage name,
+the exception, and the timestamp of the failure. The secondary sink receives `FailedRecord` objects
+and can write them to a file, a queue, or anywhere else.
+
+**`RunSummary` closes the accountability loop.** Every run produces an immutable summary with:
+- Records in / out
+- Dead-letter count
+- Dropped per stage
+- Duration
+- Conservation check: `recordsIn == recordsOut + deadLetterCount + totalDropped`
+
+The summary is printed to the terminal at the end of each run.
+
+### v5 pipeline topology
+
+```
+FileLineSource
+    │ String
+    ▼
+ParserStage ──StageException──► SKIP or DEAD_LETTER
+    │ LogRecord
+    ▼
+ValidationStage ──StageException──► DEAD_LETTER
+    │ LogRecord
+    ▼
+PredicateFilterStage(s) ── drops filtered records (counted)
+    │ LogRecord
+    ▼
+ProjectionStage
+    │ Map<String,String>
+    ▼
+FileSink (primary)                     FileSink (dead-letter, optional)
+```
+
+```mermaid
+flowchart LR
+    SRC["FileLineSource"] -- "String" --> PS["ParserStage\nonError: skip"]
+    PS -- "LogRecord" --> VS["ValidationStage\nonError: dead_letter"]
+    PS -. "StageException" .-> DL["Dead-letter\nFileSink"]
+    VS -- "LogRecord" --> FS["PredicateFilterStage(s)"]
+    VS -. "StageException" .-> DL
+    FS -- "LogRecord" --> PR["ProjectionStage"]
+    PR -- "Map" --> SINK["FileSink\n(primary)"]
+```
+
+### New YAML keys (v5)
+
+```yaml
+stages:
+  - type: parse
+    onError: skip          # fail_fast | skip | dead_letter | retry(n) — default: fail_fast
+  - type: validate
+    onError: dead_letter
+    params:
+      required: [clientIp, status, path]        # fields that must be non-empty
+      ranges:
+        status: { min: 100, max: 599 }          # numeric bounds
+        bytes:  { min: 0 }
+      minTimestamp: "2000-01-01T00:00:00Z"      # reject corrupted epoch dates
+      maxTimestamp: "2030-01-01T00:00:00Z"
+      ip: true                                  # validate IPv4 / IPv6 format
+      maxRawLength: 65536                       # reject lines > 64 KB
+deadLetter:                                     # optional; auto-created if any stage is dead_letter
+  type: file
+  params: { path: out/dead-letter.txt, echo: true }
+```
+
+### What changed and what did not
+
+| | Changed | Unchanged |
+|---|---|---|
+| `ParserStage` | now throws `StageException` on malformed lines (instead of silent skip) | parsing logic itself |
+| `Pipeline` | dispatches `ErrorPolicy`; tracks counters; returns `RunSummary` | stage chaining / emitter pattern |
+| `PipelineBuilder` | `via()` accepts a stage name and `ErrorPolicy` | fluent API |
+| `Main` | prints `RunSummary`; exits with code 3 on `PipelineException` | arg parsing |
+| Config YAML | new `onError` per stage; new `deadLetter` section; new `validate` stage type | all existing keys |
+| `StageException` | richer Javadoc; semantics clarified | constructor signatures |
+| `PipelineException` | richer Javadoc | constructor signatures |
+| Tests | updated for new exception semantics; 4 new test cases added | all passing, 61 total |
+| Added | `ErrorPolicy`, `ValidationStage`, `FailedRecord`, `RunSummary` | — |
+| Unchanged | `core` interfaces, `LogRecord`, `FileLineSource`, `FileSink`, `ConsoleSink`, `TeeSink`, `FieldCondition`, `PredicateFilterStage`, `ProjectionStage`, `StageRegistry`, `PipelineLoader`, `Params` | — |

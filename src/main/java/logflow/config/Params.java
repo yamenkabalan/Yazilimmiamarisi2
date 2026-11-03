@@ -32,6 +32,11 @@ public final class Params {
         }
     }
 
+    /** Whether the parameter exists and is non-null. */
+    public boolean has(String key) {
+        return values.containsKey(key) && values.get(key) != null;
+    }
+
     /** A required text parameter. */
     public String string(String key) {
         Object v = value(key);
@@ -43,7 +48,10 @@ public final class Params {
 
     /** An optional text parameter. */
     public String string(String key, String defaultValue) {
-        return values.containsKey(key) ? string(key) : defaultValue;
+        if (!values.containsKey(key)) {
+            return defaultValue;
+        }
+        return string(key);
     }
 
     /** An optional true/false parameter. */
@@ -56,6 +64,44 @@ public final class Params {
             throw error("parameter '" + key + "' must be true or false, got: " + v);
         }
         return (Boolean) v;
+    }
+
+    /** A numeric parameter. */
+    public Number number(String key) {
+        Object v = value(key);
+        if (!(v instanceof Number)) {
+            throw error("parameter '" + key + "' must be a number, got: " + v);
+        }
+        return (Number) v;
+    }
+
+    /** An optional numeric parameter. */
+    public Number number(String key, Number defaultValue) {
+        if (!values.containsKey(key)) {
+            return defaultValue;
+        }
+        return number(key);
+    }
+
+    /** A map parameter, e.g. {@code ranges: { status: { min: 200 } }}. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> map(String key) {
+        Object v = value(key);
+        if (!(v instanceof Map)) {
+            throw error("parameter '" + key + "' must be a map/section, got: " + v);
+        }
+        Map<String, Object> res = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> e : ((Map<?, ?>) v).entrySet()) {
+            res.put(String.valueOf(e.getKey()), e.getValue());
+        }
+        return Collections.unmodifiableMap(res);
+    }
+
+    public Map<String, Object> map(String key, Map<String, Object> defaultValue) {
+        if (!values.containsKey(key)) {
+            return defaultValue;
+        }
+        return map(key);
     }
 
     /** A required parameter of any type (text, number, …). */
@@ -78,6 +124,13 @@ public final class Params {
             list.add(String.valueOf(item));
         }
         return Collections.unmodifiableList(list);
+    }
+
+    public List<String> stringList(String key, List<String> defaultValue) {
+        if (!values.containsKey(key)) {
+            return defaultValue;
+        }
+        return stringList(key);
     }
 
     /** Fails on parameters nobody asked for — usually a typo. */

@@ -46,8 +46,10 @@ class PipelineLoaderTest {
 
     @Test
     void validConfigBuildsAndRuns() throws Exception {
+        // onError: skip so that the one broken line in fixture.log is skipped (not FAIL_FAST)
         LoadedPipeline p = loader.loadYaml(config(
                 "    - type: parse\n"
+                + "      onError: skip\n"
                 + "      params: { format: clf }\n"
                 + "    - type: filter\n"
                 + "      params: { field: status, op: '>=', value: 400 }\n"
@@ -71,7 +73,7 @@ class PipelineLoaderTest {
     @Test
     void unknownStageType() throws Exception {
         String msg = errorOf(config("    - type: parse\n    - type: filtr\n"));
-        assertEquals("stage 2 (filtr): unknown stage type 'filtr'. Known types: [parse, filter, project]", msg);
+        assertEquals("stage 2 (filtr): unknown stage type 'filtr'. Known types: [parse, validate, filter, project]", msg);
     }
 
     @Test
@@ -126,7 +128,8 @@ class PipelineLoaderTest {
     @Test
     void fileSinkWithEchoWritesTheFileAndReportsBothOutputs() throws Exception {
         String out = dir.resolve("out.txt").toString().replace('\\', '/');
-        LoadedPipeline p = loader.loadYaml(config("    - type: parse\n")
+        // onError: skip so the broken line in fixture.log doesn't abort the run
+        LoadedPipeline p = loader.loadYaml(config("    - type: parse\n      onError: skip\n")
                 .replace("params: { path: '" + out + "' }", "params: { path: '" + out + "', echo: true }"));
         p.run();
 
@@ -137,8 +140,7 @@ class PipelineLoaderTest {
     @Test
     void echoMustBeTrueOrFalse() throws Exception {
         String out = dir.resolve("out.txt").toString().replace('\\', '/');
-        String msg = errorOf(config("    - type: parse\n")
-                .replace("params: { path: '" + out + "' }", "params: { path: '" + out + "', echo: yes-please }"));
+        String msg = errorOf(config("    - type: parse\n").replace("params: { path: '" + out + "' }", "params: { path: '" + out + "', echo: yes-please }"));
         assertEquals("sink (file): parameter 'echo' must be true or false, got: yes-please", msg);
     }
 
@@ -163,5 +165,38 @@ class PipelineLoaderTest {
             }
         }
         assertEquals(3, count);
+    }
+
+    // ---- v5: error policy tests -------------------------------------------------------
+
+    @Test
+    void parseStageWithSkipPolicySkipsMalformedLines() throws Exception {
+        LoadedPipeline p = loader.loadYaml(config(
+                "    - type: parse\n"
+                + "      onError: skip\n"));
+        p.run();
+
+        // fixture has 6 valid + 1 malformed line; skip policy means we get 6 out
+        assertEquals(6, p.recordCount());
+        assertEquals(1, p.malformedCount());
+    }
+
+    @Test
+    void parseStageWithFailFastAbortsPipeline() throws Exception {
+        LoadedPipeline p = loader.loadYaml(config(
+                "    - type: parse\n"
+                + "      onError: fail_fast\n"));
+        // The broken line should cause the run to fail
+        assertThrows(logflow.pipeline.PipelineException.class, p::run);
+    }
+
+    @Test
+    void invalidErrorPolicyRejectedAtConfigTime() throws Exception {
+        try {
+            loader.loadYaml(config("    - type: parse\n      onError: explode_loudly\n"));
+            assertTrue(false, "Should have thrown ConfigException");
+        } catch (ConfigException e) {
+            assertTrue(e.getMessage().contains("explode_loudly"), e.getMessage());
+        }
     }
 }

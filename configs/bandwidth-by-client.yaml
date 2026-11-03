@@ -6,6 +6,7 @@ pipeline:
     params: { path: data/access-small.log }
   stages:
     - type: parse
+      onError: skip        # v5: malformed lines are skipped and counted
     - type: filter
       params: { field: bytes, op: ">", value: 0 }
     - type: project

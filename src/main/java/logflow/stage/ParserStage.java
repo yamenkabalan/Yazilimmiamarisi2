@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 
 import logflow.core.Emitter;
 import logflow.core.Stage;
+import logflow.core.StageException;
 import logflow.model.LogRecord;
 
 /**
@@ -18,9 +19,9 @@ import logflow.model.LogRecord;
  * The Combined Log Format (CLF + {@code "referer" "user-agent"}) is accepted too, since the
  * sample data uses it. Leading/trailing whitespace and repeated spaces between fields are tolerated.
  * <p>
- * <b>Malformed lines (v2):</b> they are only <i>skipped and counted</i> — nothing is emitted
- * and no exception is thrown. Proper handling (error records, dead-letter output) comes in
- * week 5 as its own layer; this stage deliberately does not try to solve that yet.
+ * <b>Malformed lines:</b> in v5, the "silently skip" approach has been replaced with the pipeline's
+ * designed error strategy. When a line cannot be parsed, this stage throws a {@link StageException}.
+ * The pipeline's configured {@link logflow.core.ErrorPolicy} (e.g. DEAD_LETTER or SKIP) then routes or counts the record.
  */
 public final class ParserStage implements Stage<String, LogRecord> {
 
@@ -40,16 +41,30 @@ public final class ParserStage implements Stage<String, LogRecord> {
     }
 
     @Override
-    public void process(String line, Emitter<LogRecord> out) {
+    public void process(String line, Emitter<LogRecord> out) throws StageException {
+        if (line == null || line.trim().isEmpty()) {
+            malformed++;
+            throw new StageException("Empty or blank log line");
+        }
+        if (line.length() > 65536) {
+            malformed++;
+            throw new StageException("Line length (" + line.length() + " chars) exceeds maximum allowed limit");
+        }
+        if (line.contains("\uFFFD")) {
+            malformed++;
+            throw new StageException("Invalid UTF-8 byte sequences detected in log line");
+        }
+
         LogRecord record = parse(line);
         if (record == null) {
             malformed++;
-        } else {
-            out.emit(record);
+            throw new StageException("Malformed CLF log line: "
+                    + (line.length() > 120 ? line.substring(0, 120) + "..." : line));
         }
+        out.emit(record);
     }
 
-    /** Number of lines that were skipped because they could not be parsed. */
+    /** Number of lines that failed to parse since the last {@link #open()}. */
     public long malformedCount() {
         return malformed;
     }

@@ -2,6 +2,7 @@ package logflow.stage;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import logflow.core.StageException;
 import logflow.model.LogRecord;
 import logflow.testing.CollectingEmitter;
 
@@ -34,7 +36,7 @@ class ParserStageTest {
     }
 
     private void assertSkipped(String line) {
-        parser.process(line, out);
+        assertThrows(StageException.class, () -> parser.process(line, out));
         assertTrue(out.isEmpty(), "nothing should be emitted for: " + line);
         assertEquals(1, parser.malformedCount());
     }
@@ -43,7 +45,7 @@ class ParserStageTest {
 
     @Test
     @DisplayName("1. valid line is parsed into all fields")
-    void validLine() {
+    void validLine() throws Exception {
         parser.process(VALID, out);
 
         LogRecord r = out.single();
@@ -87,7 +89,7 @@ class ParserStageTest {
 
     @Test
     @DisplayName("6. extra whitespace around and between fields is tolerated")
-    void extraWhitespace() {
+    void extraWhitespace() throws Exception {
         parser.process("   10.0.0.1  -  -   [28/Sep/2026:08:01:03 +0300]  \"GET  /a  HTTP/1.1\"   404   12   ", out);
 
         LogRecord r = out.single();
@@ -100,7 +102,7 @@ class ParserStageTest {
 
     @Test
     @DisplayName("7. quoted user agent containing spaces is kept whole")
-    void quotedUserAgentWithSpaces() {
+    void quotedUserAgentWithSpaces() throws Exception {
         String ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 Safari/605.1.15";
         parser.process("10.0.4.235 - - [28/Sep/2026:08:01:44 +0300] \"PUT /static/js/app.js HTTP/1.1\" 200 30862 "
                 + "\"-\" \"" + ua + "\"", out);
@@ -112,7 +114,7 @@ class ParserStageTest {
 
     @Test
     @DisplayName("8. query string is split from the path into the 'query' attribute")
-    void queryString() {
+    void queryString() throws Exception {
         parser.process("10.0.0.1 - - [28/Sep/2026:08:01:03 +0300] \"GET /search?q=log+flow&page=2 HTTP/1.1\" 200 99", out);
 
         LogRecord r = out.single();
@@ -124,7 +126,7 @@ class ParserStageTest {
 
     @Test
     @DisplayName("plain CLF without referer/user agent is accepted; '-' bytes means 0")
-    void plainClfWithDashBytes() {
+    void plainClfWithDashBytes() throws Exception {
         parser.process("127.0.0.1 - frank [10/Oct/2000:13:55:36 -0700] \"GET /apache_pb.gif HTTP/1.0\" 304 -", out);
 
         LogRecord r = out.single();
@@ -161,11 +163,11 @@ class ParserStageTest {
 
     @Test
     @DisplayName("malformed counter accumulates over many lines and resets on open()")
-    void countersAccumulateAndReset() {
+    void countersAccumulateAndReset() throws Exception {
         parser.process(VALID, out);
-        parser.process("junk", out);
+        try { parser.process("junk", out); } catch (StageException ignored) {}
         parser.process(VALID, out);
-        parser.process("", out);
+        try { parser.process("", out); } catch (StageException ignored) {}
 
         assertEquals(2, out.size());
         assertEquals(2, parser.malformedCount());

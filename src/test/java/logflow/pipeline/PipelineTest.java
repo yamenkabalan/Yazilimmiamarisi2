@@ -9,6 +9,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import logflow.core.ErrorPolicy;
 import logflow.core.Source;
 import logflow.core.Stage;
 import logflow.core.StageException;
@@ -22,7 +23,8 @@ class PipelineTest {
             "10.0.0.1 - - [28/Sep/2026:08:01:03 +0300] \"GET /a HTTP/1.1\" 200 10 \"-\" \"curl/8\"";
 
     @Test
-    void sourceParserSink() {
+    void sourceParserSinkWithSkipPolicy() {
+        // v5: malformed lines throw StageException; with SKIP policy they are silently dropped
         Source<String> source = out -> {
             for (String s : Arrays.asList(GOOD, "bad", GOOD, "")) {
                 out.emit(s);
@@ -32,11 +34,28 @@ class PipelineTest {
         ParserStage parser = new ParserStage();
 
         new Pipeline<String, LogRecord>(source, sink::add)
-                .addStage(parser)
+                .addStage("parse", parser, ErrorPolicy.SKIP)
                 .run();
 
         assertEquals(2, sink.size());
         assertEquals(2, parser.malformedCount());
+    }
+
+    @Test
+    void sourceParserSinkWithFailFastPolicy() {
+        // v5: with FAIL_FAST, the first bad line aborts the pipeline
+        Source<String> source = out -> {
+            for (String s : Arrays.asList(GOOD, "bad", GOOD)) {
+                out.emit(s);
+            }
+        };
+        List<LogRecord> sink = new ArrayList<>();
+        ParserStage parser = new ParserStage();
+
+        Pipeline<String, LogRecord> p = new Pipeline<String, LogRecord>(source, sink::add)
+                .addStage("parse", parser, ErrorPolicy.FAIL_FAST);
+
+        assertThrows(PipelineException.class, p::run);
     }
 
     @Test

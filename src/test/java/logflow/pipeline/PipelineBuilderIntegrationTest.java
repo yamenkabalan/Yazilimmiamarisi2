@@ -13,6 +13,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import logflow.core.ErrorPolicy;
 import logflow.io.FileLineSource;
 import logflow.io.FileSink;
 import logflow.stage.ParserStage;
@@ -38,11 +39,12 @@ class PipelineBuilderIntegrationTest {
         Path out = dir.resolve("result.log");
         ParserStage parser = new ParserStage();
 
+        // v5: parser uses SKIP so the one broken line in fixture.log is silently skipped (not FAIL_FAST)
         Pipeline<String, Map<String, String>> p = PipelineBuilder.from(new FileLineSource(fixture()))
-                .via(parser)
-                .via(PredicateFilterStage.minStatus(400))
-                .via(PredicateFilterStage.pathPrefix("/api"))
-                .via(new ProjectionStage("timestamp", "clientIp", "status", "path"))
+                .via("parse",  parser,                                    ErrorPolicy.SKIP)
+                .via("filter", PredicateFilterStage.minStatus(400),       ErrorPolicy.FAIL_FAST)
+                .via("filter", PredicateFilterStage.pathPrefix("/api"),   ErrorPolicy.FAIL_FAST)
+                .via("project", new ProjectionStage("timestamp", "clientIp", "status", "path"), ErrorPolicy.FAIL_FAST)
                 .to(new FileSink<>(out));
         p.run();
 
@@ -55,17 +57,19 @@ class PipelineBuilderIntegrationTest {
         Path statusFirst = dir.resolve("a.log");
         Path prefixFirst = dir.resolve("b.log");
 
+        // v5: parser uses SKIP policy so broken lines don't abort the pipeline
         PipelineBuilder.from(new FileLineSource(fixture()))
-                .via(new ParserStage())
-                .via(PredicateFilterStage.minStatus(400))
-                .via(PredicateFilterStage.pathPrefix("/api"))
-                .via(new ProjectionStage("timestamp", "clientIp", "status", "path"))
+                .via("parse",  new ParserStage(),                         ErrorPolicy.SKIP)
+                .via("filter", PredicateFilterStage.minStatus(400),       ErrorPolicy.FAIL_FAST)
+                .via("filter", PredicateFilterStage.pathPrefix("/api"),   ErrorPolicy.FAIL_FAST)
+                .via("project", new ProjectionStage("timestamp", "clientIp", "status", "path"), ErrorPolicy.FAIL_FAST)
                 .to(new FileSink<>(statusFirst)).run();
+
         PipelineBuilder.from(new FileLineSource(fixture()))
-                .via(new ParserStage())
-                .via(PredicateFilterStage.pathPrefix("/api"))
-                .via(PredicateFilterStage.minStatus(400))
-                .via(new ProjectionStage("timestamp", "clientIp", "status", "path"))
+                .via("parse",  new ParserStage(),                         ErrorPolicy.SKIP)
+                .via("filter", PredicateFilterStage.pathPrefix("/api"),   ErrorPolicy.FAIL_FAST)
+                .via("filter", PredicateFilterStage.minStatus(400),       ErrorPolicy.FAIL_FAST)
+                .via("project", new ProjectionStage("timestamp", "clientIp", "status", "path"), ErrorPolicy.FAIL_FAST)
                 .to(new FileSink<>(prefixFirst)).run();
 
         assertEquals(EXPECTED, Files.readAllLines(statusFirst, StandardCharsets.UTF_8));

@@ -1,5 +1,69 @@
 # Changelog
 
+## v5 — Error handling: policies, dead-letter channel, validation stage and run summary
+
+### Added
+- `src/main/java/logflow/core/ErrorPolicy.java` — four policies: `FAIL_FAST`, `SKIP`, `DEAD_LETTER`, `RETRY(n)`;
+  parsed from the YAML `onError` key; validated at configuration time.
+- `src/main/java/logflow/model/FailedRecord.java` — diagnostic record routed to the dead-letter channel
+  (carries raw input, stage name, exception, and failure timestamp).
+- `src/main/java/logflow/pipeline/RunSummary.java` — immutable end-of-run report:
+  records in/out, dead-letter count, dropped per stage, duration, and a conservation check
+  (`recordsIn == recordsOut + deadLetterCount + totalDropped`).
+- `src/main/java/logflow/stage/ValidationStage.java` — declarative domain validator:
+  required fields, numeric ranges (status, bytes), timestamp window, IP format, max line length.
+  Throws `StageException` on any violation; typically used with `onError: dead_letter`.
+
+### Changed (existing files)
+- `src/main/java/logflow/stage/ParserStage.java` — now **throws `StageException`** on malformed
+  lines (empty, too long, invalid UTF-8, unparseable CLF) instead of silently counting them.
+  The `malformedCount()` counter still accumulates for reporting purposes.
+- `src/main/java/logflow/pipeline/Pipeline.java` — dispatches `ErrorPolicy` per stage:
+  `FAIL_FAST` re-raises as `PipelineException`, `SKIP` counts and continues, `DEAD_LETTER`
+  routes a `FailedRecord` to the secondary sink, `RETRY` retries *n* times.
+  Added per-stage `StageNode` (counters, name, policy). `run()` returns `RunSummary`.
+  Added optional `deadLetterSink`.
+- `src/main/java/logflow/pipeline/PipelineBuilder.java` — `via()` accepts a stage name and
+  `ErrorPolicy`; added `deadLetter()` method to set the secondary sink.
+- `src/main/java/logflow/pipeline/PipelineException.java` — Javadoc clarified
+  (unrecoverable, pipeline-level failure vs. record-level `StageException`).
+- `src/main/java/logflow/core/StageException.java` — Javadoc clarified
+  (recoverable, record-level failure routed by `ErrorPolicy`).
+- `src/main/java/logflow/config/StageRegistry.java` — registered new `validate` stage type.
+- `src/main/java/logflow/config/PipelineLoader.java` — reads `onError` / `on_error` /
+  `errorPolicy` / `error_policy` per stage; reads optional `deadLetter` / `dead_letter` section;
+  auto-creates `out/dead-letter.txt` if any stage uses `DEAD_LETTER` but no explicit sink is given.
+- `src/main/java/logflow/config/LoadedPipeline.java` — `run()` now returns `RunSummary`;
+  added `deadLetterOutput()`.
+- `src/main/java/logflow/config/Params.java` — added `has()`, `number()`, `map()` helpers
+  needed by the validate stage factory.
+- `src/main/java/logflow/Main.java` — prints `RunSummary`; exits with code 3 on `PipelineException`.
+- `configs/error-report.yaml` — added `onError: skip` on parse; added `validate` stage with
+  `onError: dead_letter`; added `deadLetter` section (`out/dead-letter.txt`).
+- `configs/api-traffic.yaml`, `configs/bandwidth-by-client.yaml` — added `onError: skip` on parse.
+- `pom.xml` — version bumped to 5.0.0.
+- `ARCHITECTURE.md` — v5 section added.
+
+### Test changes
+- `src/test/java/logflow/stage/ParserStageTest.java` — `assertSkipped` now uses
+  `assertThrows(StageException.class, …)` (parser throws, not silently skips);
+  happy-path test methods declare `throws Exception`.
+- `src/test/java/logflow/pipeline/PipelineTest.java` — two new tests: `SKIP` policy skips,
+  `FAIL_FAST` policy aborts; renamed `sourceParserSink` → `sourceParserSinkWithSkipPolicy`.
+- `src/test/java/logflow/pipeline/PipelineBuilderIntegrationTest.java` — parser stage uses
+  `ErrorPolicy.SKIP` so the broken fixture line is tolerated.
+- `src/test/java/logflow/config/PipelineLoaderTest.java` — `validConfigBuildsAndRuns` and
+  `fileSinkWithEchoWritesTheFileAndReportsBothOutputs` add `onError: skip` on the parse stage;
+  `unknownStageType` updated for the new `validate` type in the registry;
+  three new tests: `parseStageWithSkipPolicy`, `parseStageWithFailFastAbortsPipeline`,
+  `invalidErrorPolicyRejectedAtConfigTime`.
+- **Total: 61 tests (was 57); all pass.**
+
+### Not changed
+`FileLineSource`, `FileSink`, `TeeSink`, `ConsoleSink`, `LogRecord`, `PredicateFilterStage`,
+`ProjectionStage`, `ParserStageTest` happy-path assertions, `FieldCondition`, `FieldConditionTest`,
+`core` interfaces (`Source`, `Sink`, `Stage`, `Emitter`, `Record`).
+
 ## v4 — Configuration-driven composition and a stage registry
 
 ### Added
