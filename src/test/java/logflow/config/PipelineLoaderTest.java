@@ -164,7 +164,7 @@ class PipelineLoaderTest {
                 count++;
             }
         }
-        assertEquals(3, count);
+        assertEquals(4, count);
     }
 
     // ---- v5: error policy tests -------------------------------------------------------

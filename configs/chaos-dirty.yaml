@@ -1,0 +1,28 @@
+# Chaos test configuration: processes access-dirty.log
+# Valid records reach out/clean.txt; malformed & invalid records reach out/dead-letter.txt
+pipeline:
+  name: chaos-dirty
+  source:
+    type: file
+    params: { path: data/access-dirty.log }
+  stages:
+    - type: parse
+      onError: dead_letter
+      params: { format: clf }
+    - type: validate
+      onError: dead_letter
+      params:
+        required: [clientIp, status, path, timestamp]
+        ranges:
+          status: { min: 100, max: 599 }
+          bytes: { min: 0 }
+        minTimestamp: "2000-01-01T00:00:00Z"
+        maxTimestamp: "2030-01-01T00:00:00Z"
+        ip: true
+        maxRawLength: 65536
+  sink:
+    type: file
+    params: { path: out/clean.txt, echo: true }
+  deadLetter:
+    type: file
+    params: { path: out/dead-letter.txt, echo: true }

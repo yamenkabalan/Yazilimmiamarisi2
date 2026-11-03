@@ -13,6 +13,11 @@
 - `src/main/java/logflow/stage/ValidationStage.java` — declarative domain validator:
   required fields, numeric ranges (status, bytes), timestamp window, IP format, max line length.
   Throws `StageException` on any violation; typically used with `onError: dead_letter`.
+- `data/access-dirty.log` and `data/access-empty.log` — instructor-provided chaos test fixtures
+  (truncated lines, negative bytes, 1970/2099 timestamps, non-UTF-8 bytes, 100 KiB single line, empty file).
+- `configs/chaos-dirty.yaml` — chaos test pipeline config demonstrating 100% accounting and dead-letter routing.
+- `src/test/java/logflow/pipeline/ChaosIntegrationTest.java` — integration tests verifying
+  chaos resilience, dead-letter routing, and exact conservation accounting.
 
 ### Changed (existing files)
 - `src/main/java/logflow/stage/ParserStage.java` — now **throws `StageException`** on malformed
@@ -57,7 +62,7 @@
   `unknownStageType` updated for the new `validate` type in the registry;
   three new tests: `parseStageWithSkipPolicy`, `parseStageWithFailFastAbortsPipeline`,
   `invalidErrorPolicyRejectedAtConfigTime`.
-- **Total: 61 tests (was 57); all pass.**
+- **Total: 63 tests (was 57); all pass.**
 
 ### Not changed
 `FileLineSource`, `FileSink`, `TeeSink`, `ConsoleSink`, `LogRecord`, `PredicateFilterStage`,

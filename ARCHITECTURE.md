@@ -365,6 +365,39 @@ deadLetter:                                     # optional; auto-created if any 
   params: { path: out/dead-letter.txt, echo: true }
 ```
 
+### Error model: StageException vs. PipelineException
+
+LogFlow v5 establishes a clear architectural distinction between record-level and pipeline-level failures:
+
+| Özellik | `StageException` (Aşama Hatası) | `PipelineException` (İşlem Hattı Hatası) |
+|---|---|---|
+| **Kapsam** | Tek bir kayıt (record-level) | Bütün işlem hattı (pipeline-level) |
+| **Kurtarılabilirlik** | **Kurtarılabilir** — sonraki kayıtlara geçilebilir | **Kurtarılamaz** — işlem hattı derhal durmalıdır |
+| **Örnekler** | Bozuk CLF sözdizimi, eksik alan, negatif byte, tutarsız timestamp (1970/2099), geçersiz IP | Hatalı YAML konfigürasyonu, bulunamayan/okunamayan dosya, diskin dolması, FAIL_FAST tetiklenmesi |
+| **Nasıl ele alınır** | Aşamanın ayarlanmış `ErrorPolicy`'sine (`SKIP`, `DEAD_LETTER`, `RETRY`, `FAIL_FAST`) yönlendirilir | `Main` tarafından yakalanır, hata mesajı yazdırılır ve çıkış kodu (exit code 2 veya 3) ile sonlanır |
+| **Sınıf hiyerarşisi** | `java.lang.Exception` (checked) | `java.lang.RuntimeException` (unchecked) |
+
+### Kaos Testi — Bozuk dosya hata türleri ve ele alan politikalar tablosu
+
+`data/access-dirty.log` ve `data/access-empty.log` test dosyalarındaki her hata türü ve uygulanan politika eşleşmesi:
+
+| Hata Türü | `data/access-dirty.log` Örneği | Tespit Eden Aşama | Hata Sınıfı | Uygulanan Politika | Hedef / Sonuç |
+|---|---|---|---|---|---|
+| **Yorum / Başlık Satırı** | `# Deliberately corrupted HTTP access-log fixture` | `ParserStage` | `StageException` | `DEAD_LETTER` | Dead-letter sink (`out/dead-letter.txt`) |
+| **Kesilmiş Satır (1)** | `192.0.2.44 - - [15/Oct/2026:10:18:` | `ParserStage` | `StageException` | `DEAD_LETTER` | Dead-letter sink (`out/dead-letter.txt`) |
+| **Kesilmiş Satır (2)** | `198.51.100.9 - - [...] "GET /broken HTTP/1.1" 200` | `ParserStage` | `StageException` | `DEAD_LETTER` | Dead-letter sink (`out/dead-letter.txt`) |
+| **Negatif Byte Sayısı** | `... "GET /download HTTP/1.1" 200 -45 ...` | `ParserStage` / `ValidationStage` | `StageException` | `DEAD_LETTER` | Dead-letter sink (`out/dead-letter.txt`) |
+| **Geçmiş Zaman Damgası (1970)** | `... [01/Jan/1970:00:00:00 +0000] "GET /old ...` | `ValidationStage` | `StageException` | `DEAD_LETTER` | Dead-letter sink (`out/dead-letter.txt`) |
+| **Gelecek Zaman Damgası (2099)** | `... [31/Dec/2099:23:59:59 +0000] "GET /future ...` | `ValidationStage` | `StageException` | `DEAD_LETTER` | Dead-letter sink (`out/dead-letter.txt`) |
+| **UTF-8 Olmayan Baytlar** | `... "GET /bad-encoding ... "???"` (0xFF 0xFE 0xFA) | `FileLineSource` (decoder) + `ParserStage` | `StageException` | `DEAD_LETTER` | Dead-letter sink (`out/dead-letter.txt`) |
+| **100 KiB Tek Satır** | 102,400 baytlık devasa payload satırı | `ParserStage` | `StageException` | `DEAD_LETTER` | Dead-letter sink (`out/dead-letter.txt`) |
+| **Geçerli Kayıtlar (3 adet)** | `/index.html`, `/api/login`, `/images/logo.png` | `ParserStage` + `ValidationStage` | — (Hatasız) | Normal akış | Ana hedef (`out/clean.txt`) |
+| **Boş Dosya** | `data/access-empty.log` (0 byte) | `FileLineSource` / `Pipeline` | — (Hatasız) | Normal akış | 0 kayıt işlenir, temiz sonlanma |
+
+**Özet Muhasebe Eşitliği (Conservation of Records):**
+`Gelen Kayıt (11) == Çıkan Kayıt (3) + Dead-Letter (8) + Atılan Kayıt (0)`
+Tüm kayıtlar tam olarak birbirini tutar ve sistem çökmeden çalışmasını tamamlar.
+
 ### What changed and what did not
 
 | | Changed | Unchanged |
